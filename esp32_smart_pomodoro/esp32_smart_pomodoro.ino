@@ -77,6 +77,17 @@ float getSmoothedDistanceCM() {
 }
 
 // ==========================================
+// RGB Light Output Helper (IR + Direct Pins)
+// ==========================================
+void setRGBColor(uint8_t r, uint8_t g, uint8_t b) {
+#if ENABLE_DIRECT_RGB
+  digitalWrite(PIN_RGB_RED,   r ? HIGH : LOW);
+  digitalWrite(PIN_RGB_GREEN, g ? HIGH : LOW);
+  digitalWrite(PIN_RGB_BLUE,  b ? HIGH : LOW);
+#endif
+}
+
+// ==========================================
 // Pomodoro State Helpers
 // ==========================================
 void startWorkSession() {
@@ -87,6 +98,7 @@ void startWorkSession() {
   phaseStartTime = millis();
   remainingMs = phaseDurationMs;
   irsend.sendNEC(IR_RED, 32);
+  setRGBColor(255, 0, 0);
   Serial.println("[POMODORO] Focus Session Started -> Light: RED");
 }
 
@@ -99,6 +111,7 @@ void startBreakSession() {
   remainingMs = phaseDurationMs;
   cyclesCompleted++;
   irsend.sendNEC(IR_GREEN, 32);
+  setRGBColor(0, 255, 0);
   Serial.printf("[POMODORO] Break Session Started (Cycle #%u) -> Light: GREEN\n", cyclesCompleted);
 }
 
@@ -113,6 +126,7 @@ void pauseSession(bool byAbsence = false) {
   }
   isPaused = true;
   autoPausedByAbsence = byAbsence;
+  setRGBColor(255, 100, 0); // Amber / orange when paused
   Serial.printf("[POMODORO] Session Paused (%s). Remaining: %lu sec\n", 
                 byAbsence ? "User Walkaway" : "Manual", remainingMs / 1000UL);
 }
@@ -127,8 +141,10 @@ void resumeSession() {
   // Restore appropriate color on resume
   if (currentState == STATE_WORK) {
     irsend.sendNEC(IR_RED, 32);
+    setRGBColor(255, 0, 0);
   } else if (currentState == STATE_BREAK) {
     irsend.sendNEC(IR_GREEN, 32);
+    setRGBColor(0, 255, 0);
   }
   Serial.println("[POMODORO] Session Resumed");
 }
@@ -140,6 +156,7 @@ void resetPomodoro() {
   phaseDurationMs = DEFAULT_WORK_DURATION_MS;
   remainingMs = DEFAULT_WORK_DURATION_MS;
   irsend.sendNEC(IR_WHITE, 32);
+  setRGBColor(255, 255, 255);
   Serial.println("[POMODORO] Reset to IDLE -> Light: WHITE");
 }
 
@@ -208,19 +225,19 @@ void handleApiCmd() {
     String val = server.arg("val");
     uint32_t code = 0;
 
-    if (val == "on")            code = IR_POWER_ON;
-    else if (val == "off")       code = IR_POWER_OFF;
-    else if (val == "bright_up") code = IR_BRIGHT_UP;
-    else if (val == "bright_dn") code = IR_BRIGHT_DN;
-    else if (val == "red")       code = IR_RED;
-    else if (val == "green")     code = IR_GREEN;
-    else if (val == "blue")      code = IR_BLUE;
-    else if (val == "white")     code = IR_WHITE;
-    else if (val == "orange")    code = IR_ORANGE;
-    else if (val == "cyan")      code = IR_CYAN;
-    else if (val == "purple")    code = IR_PURPLE;
-    else if (val == "flash")     code = IR_FLASH;
-    else if (val == "smooth")    code = IR_SMOOTH;
+    if (val == "on")            { code = IR_POWER_ON;  setRGBColor(255, 255, 255); }
+    else if (val == "off")       { code = IR_POWER_OFF; setRGBColor(0, 0, 0); }
+    else if (val == "bright_up") { code = IR_BRIGHT_UP; }
+    else if (val == "bright_dn") { code = IR_BRIGHT_DN; }
+    else if (val == "red")       { code = IR_RED;       setRGBColor(255, 0, 0); }
+    else if (val == "green")     { code = IR_GREEN;     setRGBColor(0, 255, 0); }
+    else if (val == "blue")      { code = IR_BLUE;      setRGBColor(0, 0, 255); }
+    else if (val == "white")     { code = IR_WHITE;     setRGBColor(255, 255, 255); }
+    else if (val == "orange")    { code = IR_ORANGE;    setRGBColor(255, 120, 0); }
+    else if (val == "cyan")      { code = IR_CYAN;      setRGBColor(0, 255, 255); }
+    else if (val == "purple")    { code = IR_PURPLE;    setRGBColor(255, 0, 255); }
+    else if (val == "flash")     { code = IR_FLASH; }
+    else if (val == "smooth")    { code = IR_SMOOTH; }
 
     if (code != 0) {
       irsend.sendNEC(code, 32);
@@ -276,6 +293,13 @@ void setup() {
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
   digitalWrite(PIN_TRIG, LOW);
+
+#if ENABLE_DIRECT_RGB
+  pinMode(PIN_RGB_RED, OUTPUT);
+  pinMode(PIN_RGB_GREEN, OUTPUT);
+  pinMode(PIN_RGB_BLUE, OUTPUT);
+  setRGBColor(255, 255, 255); // Default to white
+#endif
 
   // Initialize IR Transmitter
   irsend.begin();
