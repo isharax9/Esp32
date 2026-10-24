@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "author": "ESP32 Smart Pomodoro System",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultrasonic",
+      "top": -140,
+      "left": -130,
+      "attrs": {
+        "distance": "50"
+      }
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht",
+      "top": -140,
+      "left": 120,
+      "attrs": {
+        "temperature": "24",
+        "humidity": "55"
+      }
+    },
+    {
+      "type": "wokwi-ir-receiver",
+      "id": "ir_recv",
+      "top": 220,
+      "left": -130,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_ir",
+      "top": 130,
+      "left": 130,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_ir",
+      "top": 120,
+      "left": 220,
+      "attrs": {
+        "color": "purple",
+        "label": "IR 940nm"
+      }
+    },
+    {
+      "type": "wokwi-rgb-led",
+      "id": "rgb_strip",
+      "top": 0,
+      "left": 220,
+      "attrs": {
+        "common": "cathode"
+      }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "ultrasonic:VCC", "esp:5V", "red", [ "v0" ] ],
+    [ "ultrasonic:GND", "esp:GND.1", "black", [ "v0" ] ],
+    [ "ultrasonic:TRIG", "esp:5", "orange", [ "v0" ] ],
+    [ "ultrasonic:ECHO", "esp:18", "yellow", [ "v0" ] ],
+    [ "dht:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "dht:GND", "esp:GND.1", "black", [ "v0" ] ],
+    [ "dht:SDA", "esp:27", "green", [ "v0" ] ],
+    [ "ir_recv:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "ir_recv:GND", "esp:GND.1", "black", [ "v0" ] ],
+    [ "ir_recv:DAT", "esp:15", "blue", [ "v0" ] ],
+    [ "esp:4", "r_ir:1", "purple", [ "v0" ] ],
+    [ "r_ir:2", "led_ir:A", "purple", [ "v0" ] ],
+    [ "led_ir:C", "esp:GND.2", "black", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}
