@@ -1,0 +1,59 @@
+#pragma once
+#include <Arduino.h>
+
+// ==========================================
+// Wi-Fi Configuration
+// ==========================================
+// Replace with your local Wi-Fi credentials
+const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+
+// Optional: Fallback mDNS hostname (e.g., http://pomodoro.local)
+#define ENABLE_MDNS true
+const char* MDNS_HOSTNAME = "pomodoro";
+
+// ==========================================
+// Hardware Pin Definitions
+// ==========================================
+// ESP32 DevKit V1 Pin Assignments
+const uint16_t PIN_IR_LED   = 4;   // IR Emitter LED (via 100R-220R resistor to Anode)
+const uint8_t  PIN_TRIG     = 5;   // HC-SR04 Ultrasonic Trigger
+const uint8_t  PIN_ECHO     = 18;  // HC-SR04 Ultrasonic Echo (use voltage divider from 5V!)
+const uint8_t  PIN_DHT      = 27;  // DHT11 Data pin (with 10k pull-up if bare sensor)
+#define DHTTYPE DHT11              // DHT 11 or DHT 22
+
+// ==========================================
+// Default 24-Key RGB IR Remote Codes (NEC 32-bit)
+// ==========================================
+// If your remote uses different codes, run the ir_sniffer sketch to record them.
+const uint32_t IR_POWER_ON   = 0xF7C03F;
+const uint32_t IR_POWER_OFF  = 0xF740BF;
+const uint32_t IR_BRIGHT_UP  = 0xF700FF;
+const uint32_t IR_BRIGHT_DN  = 0xF7807F;
+
+const uint32_t IR_RED        = 0xF720DF;
+const uint32_t IR_GREEN      = 0xF7A05F;
+const uint32_t IR_BLUE       = 0xF7609F;
+const uint32_t IR_WHITE      = 0xF7E01F;
+
+const uint32_t IR_ORANGE     = 0xF710EF;
+const uint32_t IR_CYAN       = 0xF7B04F;
+const uint32_t IR_PURPLE     = 0xF7708F;
+const uint32_t IR_FLASH      = 0xF7D02F;
+const uint32_t IR_SMOOTH     = 0xF7C837;
+
+// ==========================================
+// Pomodoro & Automation Timing Parameters
+// ==========================================
+// Durations in milliseconds
+const unsigned long DEFAULT_WORK_DURATION_MS  = 25UL * 60UL * 1000UL; // 25 minutes
+const unsigned long DEFAULT_BREAK_DURATION_MS = 5UL  * 60UL * 1000UL; // 5 minutes
+
+// Ultrasonic Presence Parameters
+const float PRESENCE_THRESHOLD_CM             = 75.0f; // Max chair-to-desk distance considered "present"
+const unsigned long PRESENCE_CHECK_INTERVAL_MS= 800UL; // How frequently to ping distance (ms)
+const unsigned long ABSENCE_DEBOUNCE_MS       = 8000UL;// Must be absent for 8s continuously before pausing
+const unsigned long RETURN_DEBOUNCE_MS        = 1500UL;// Must be present for 1.5s before auto-resuming
+
+// DHT Sensor Interval
+const unsigned long DHT_READ_INTERVAL_MS      = 3000UL;// Read DHT every 3 seconds
