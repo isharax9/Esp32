@@ -1,8 +1,11 @@
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
+#include <IRrecv.h>
+#include <IRutils.h>
 #include <DHT.h>
 
 #include "config.h"
@@ -41,6 +44,8 @@ unsigned long lastDHTReadMs  = 0;
 
 // Hardware Peripherals
 IRsend irsend(PIN_IR_LED);
+IRrecv irrecv(PIN_IR_RECV);
+decode_results irResults;
 DHT dht(PIN_DHT, DHTTYPE);
 WebServer server(80);
 
@@ -125,7 +130,7 @@ void startBreakSession() {
   cyclesCompleted++;
   irsend.sendNEC(IR_GREEN, 32);
   setBothRGBColors(0, 255, 0);
-  Serial.printf("[POMODORO] Break Session Started (Cycle #%u) -> Light: GREEN (Both Strips)\n", cyclesCompleted);
+  Serial.printf("[POMODORO] Break Session Started (Cycle #%lu) -> Light: GREEN (Both Strips)\n", cyclesCompleted);
 }
 
 void pauseSession(bool byAbsence = false) {
@@ -214,7 +219,7 @@ void handleApiStatus() {
     "\"isUserPresent\":%s,"
     "\"distanceCm\":%.1f,"
     "\"autoPauseEnabled\":%s,"
-    "\"cyclesCompleted\":%u,"
+    "\"cyclesCompleted\":%lu,"
     "\"temperature\":%.1f,"
     "\"humidity\":%.1f}",
     stateStr.c_str(),
@@ -300,6 +305,60 @@ void handleApiSettings() {
 }
 
 // ==========================================
+// Physical 24-Key IR Remote Handler
+// ==========================================
+void handlePhysicalIRCommand(uint32_t val) {
+  Serial.printf("[REMOTE] Received IR Hex: 0x%06lX\n", (unsigned long)val);
+
+  switch (val) {
+    case IR_POWER_ON:
+      setBothRGBColors(255, 255, 255);
+      Serial.println("[REMOTE] -> Lights ON (White)");
+      break;
+    case IR_POWER_OFF:
+      setBothRGBColors(0, 0, 0);
+      Serial.println("[REMOTE] -> Lights OFF");
+      break;
+    case IR_RED:
+      startWorkSession();
+      break;
+    case IR_GREEN:
+      startBreakSession();
+      break;
+    case IR_WHITE:
+      resetPomodoro();
+      break;
+    case IR_BLUE:
+      setBothRGBColors(0, 0, 255);
+      Serial.println("[REMOTE] -> BLUE");
+      break;
+    case IR_ORANGE:
+      setBothRGBColors(255, 120, 0);
+      Serial.println("[REMOTE] -> ORANGE");
+      break;
+    case IR_CYAN:
+      setBothRGBColors(0, 255, 255);
+      Serial.println("[REMOTE] -> CYAN");
+      break;
+    case IR_PURPLE:
+      setBothRGBColors(255, 0, 255);
+      Serial.println("[REMOTE] -> PURPLE");
+      break;
+    case IR_YELLOW:
+      setBothRGBColors(255, 255, 0);
+      Serial.println("[REMOTE] -> YELLOW");
+      break;
+    case IR_PINK:
+      setBothRGBColors(255, 105, 180);
+      Serial.println("[REMOTE] -> PINK");
+      break;
+    default:
+      Serial.printf("[REMOTE] Pressed key: 0x%06lX\n", (unsigned long)val);
+      break;
+  }
+}
+
+// ==========================================
 // Setup
 // ==========================================
 void setup() {
@@ -326,22 +385,26 @@ void setup() {
   setBothRGBColors(255, 255, 255); // Default both strips to white
 #endif
 
-  // Initialize IR Transmitter
+  // Initialize IR Transmitter & Receiver
   irsend.begin();
+  irrecv.enableIRIn();
+  Serial.println("[IR] VS1838B IR Receiver active on GPIO 15");
 
   // Initialize DHT Sensor
   dht.begin();
 
   // Wi-Fi Connection
-  Serial.printf("[WIFI] Connecting to %s", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  if (String(WIFI_SSID) != "YOUR_WIFI_SSID" && strlen(WIFI_SSID) > 0) {
+    Serial.printf("[WIFI] Connecting to %s", WIFI_SSID);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  uint8_t wifiRetries = 0;
-  while (WiFi.status() != WL_CONNECTED && wifiRetries < 40) {
-    delay(500);
-    Serial.print(".");
-    wifiRetries++;
+    uint8_t wifiRetries = 0;
+    while (WiFi.status() != WL_CONNECTED && wifiRetries < 30) {
+      delay(500);
+      Serial.print(".");
+      wifiRetries++;
+    }
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -355,8 +418,12 @@ void setup() {
     }
 #endif
   } else {
-    Serial.println("\n[WIFI] Connection timed out. Running in standalone mode.");
-    Serial.println("[WIFI] Connect to local AP or update credentials in config.h.");
+    Serial.println("\n[WIFI] Could not connect to configured Wi-Fi.");
+    Serial.println("[WIFI] Starting fallback Access Point: 'Desk-Pomodoro' (Password: '12345678')");
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("Desk-Pomodoro", "12345678");
+    Serial.print("[WIFI] Hotspot URL: http://");
+    Serial.println(WiFi.softAPIP());
   }
 
   // Setup WebServer Routes
@@ -441,5 +508,14 @@ void loop() {
         startWorkSession();
       }
     }
+  }
+
+  // 4. Physical IR Remote Decoding
+  if (irrecv.decode(&irResults)) {
+    uint32_t val = (uint32_t)irResults.value;
+    if (val != 0 && val != 0xFFFFFFFF) {
+      handlePhysicalIRCommand(val);
+    }
+    irrecv.resume();
   }
 }

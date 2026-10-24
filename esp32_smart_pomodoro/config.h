@@ -17,6 +17,7 @@ const char* MDNS_HOSTNAME = "pomodoro";
 // ==========================================
 // ESP32 DevKit V1 Pin Assignments
 const uint16_t PIN_IR_LED   = 4;   // IR Emitter LED (via 100R-220R resistor to Anode)
+const uint16_t PIN_IR_RECV  = 15;  // VS1838B IR Receiver (listening to physical remote)
 const uint8_t  PIN_TRIG     = 5;   // HC-SR04 Ultrasonic Trigger
 const uint8_t  PIN_ECHO     = 18;  // HC-SR04 Ultrasonic Echo (use voltage divider from 5V!)
 const uint8_t  PIN_DHT      = 27;  // DHT11 Data pin (with 10k pull-up if bare sensor)
@@ -52,8 +53,12 @@ const uint32_t IR_WHITE      = 0xF7E01F;
 const uint32_t IR_ORANGE     = 0xF710EF;
 const uint32_t IR_CYAN       = 0xF7B04F;
 const uint32_t IR_PURPLE     = 0xF7708F;
+const uint32_t IR_YELLOW     = 0xF728D7;
+const uint32_t IR_PINK       = 0xF748B7;
 const uint32_t IR_FLASH      = 0xF7D02F;
-const uint32_t IR_SMOOTH     = 0xF7C837;
+const uint32_t IR_STROBE     = 0xF7F00F;
+const uint32_t IR_FADE       = 0xF7C837;
+const uint32_t IR_SMOOTH     = 0xF7E817;
 
 // ==========================================
 // Pomodoro & Automation Timing Parameters
