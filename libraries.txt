@@ -1,0 +1,3 @@
+IRremoteESP8266
+DHT sensor library
+Adafruit Unified Sensor

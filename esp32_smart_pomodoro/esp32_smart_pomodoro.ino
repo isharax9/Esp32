@@ -77,14 +77,27 @@ float getSmoothedDistanceCM() {
 }
 
 // ==========================================
-// RGB Light Output Helper (IR + Direct Pins)
+// Dual RGB Light Output Helpers (Direct Pins)
 // ==========================================
-void setRGBColor(uint8_t r, uint8_t g, uint8_t b) {
+void setRGB1Color(uint8_t r, uint8_t g, uint8_t b) {
 #if ENABLE_DIRECT_RGB
-  digitalWrite(PIN_RGB_RED,   r ? HIGH : LOW);
-  digitalWrite(PIN_RGB_GREEN, g ? HIGH : LOW);
-  digitalWrite(PIN_RGB_BLUE,  b ? HIGH : LOW);
+  digitalWrite(PIN_RGB1_RED,   r ? HIGH : LOW);
+  digitalWrite(PIN_RGB1_GREEN, g ? HIGH : LOW);
+  digitalWrite(PIN_RGB1_BLUE,  b ? HIGH : LOW);
 #endif
+}
+
+void setRGB2Color(uint8_t r, uint8_t g, uint8_t b) {
+#if ENABLE_DIRECT_RGB
+  digitalWrite(PIN_RGB2_RED,   r ? HIGH : LOW);
+  digitalWrite(PIN_RGB2_GREEN, g ? HIGH : LOW);
+  digitalWrite(PIN_RGB2_BLUE,  b ? HIGH : LOW);
+#endif
+}
+
+void setBothRGBColors(uint8_t r, uint8_t g, uint8_t b) {
+  setRGB1Color(r, g, b);
+  setRGB2Color(r, g, b);
 }
 
 // ==========================================
@@ -98,8 +111,8 @@ void startWorkSession() {
   phaseStartTime = millis();
   remainingMs = phaseDurationMs;
   irsend.sendNEC(IR_RED, 32);
-  setRGBColor(255, 0, 0);
-  Serial.println("[POMODORO] Focus Session Started -> Light: RED");
+  setBothRGBColors(255, 0, 0);
+  Serial.println("[POMODORO] Focus Session Started -> Light: RED (Both Strips)");
 }
 
 void startBreakSession() {
@@ -111,8 +124,8 @@ void startBreakSession() {
   remainingMs = phaseDurationMs;
   cyclesCompleted++;
   irsend.sendNEC(IR_GREEN, 32);
-  setRGBColor(0, 255, 0);
-  Serial.printf("[POMODORO] Break Session Started (Cycle #%u) -> Light: GREEN\n", cyclesCompleted);
+  setBothRGBColors(0, 255, 0);
+  Serial.printf("[POMODORO] Break Session Started (Cycle #%u) -> Light: GREEN (Both Strips)\n", cyclesCompleted);
 }
 
 void pauseSession(bool byAbsence = false) {
@@ -126,7 +139,7 @@ void pauseSession(bool byAbsence = false) {
   }
   isPaused = true;
   autoPausedByAbsence = byAbsence;
-  setRGBColor(255, 100, 0); // Amber / orange when paused
+  setBothRGBColors(255, 100, 0); // Amber / orange when paused
   Serial.printf("[POMODORO] Session Paused (%s). Remaining: %lu sec\n", 
                 byAbsence ? "User Walkaway" : "Manual", remainingMs / 1000UL);
 }
@@ -141,10 +154,10 @@ void resumeSession() {
   // Restore appropriate color on resume
   if (currentState == STATE_WORK) {
     irsend.sendNEC(IR_RED, 32);
-    setRGBColor(255, 0, 0);
+    setBothRGBColors(255, 0, 0);
   } else if (currentState == STATE_BREAK) {
     irsend.sendNEC(IR_GREEN, 32);
-    setRGBColor(0, 255, 0);
+    setBothRGBColors(0, 255, 0);
   }
   Serial.println("[POMODORO] Session Resumed");
 }
@@ -156,8 +169,8 @@ void resetPomodoro() {
   phaseDurationMs = DEFAULT_WORK_DURATION_MS;
   remainingMs = DEFAULT_WORK_DURATION_MS;
   irsend.sendNEC(IR_WHITE, 32);
-  setRGBColor(255, 255, 255);
-  Serial.println("[POMODORO] Reset to IDLE -> Light: WHITE");
+  setBothRGBColors(255, 255, 255);
+  Serial.println("[POMODORO] Reset to IDLE -> Light: WHITE (Both Strips)");
 }
 
 void skipCurrentPhase() {
@@ -223,25 +236,32 @@ void handleApiStatus() {
 void handleApiCmd() {
   if (server.hasArg("val")) {
     String val = server.arg("val");
+    String stripTarget = server.hasArg("strip") ? server.arg("strip") : "all";
     uint32_t code = 0;
 
-    if (val == "on")            { code = IR_POWER_ON;  setRGBColor(255, 255, 255); }
-    else if (val == "off")       { code = IR_POWER_OFF; setRGBColor(0, 0, 0); }
+    auto applyColor = [&](uint8_t r, uint8_t g, uint8_t b) {
+      if (stripTarget == "1") setRGB1Color(r, g, b);
+      else if (stripTarget == "2") setRGB2Color(r, g, b);
+      else setBothRGBColors(r, g, b);
+    };
+
+    if (val == "on")            { code = IR_POWER_ON;  applyColor(255, 255, 255); }
+    else if (val == "off")       { code = IR_POWER_OFF; applyColor(0, 0, 0); }
     else if (val == "bright_up") { code = IR_BRIGHT_UP; }
     else if (val == "bright_dn") { code = IR_BRIGHT_DN; }
-    else if (val == "red")       { code = IR_RED;       setRGBColor(255, 0, 0); }
-    else if (val == "green")     { code = IR_GREEN;     setRGBColor(0, 255, 0); }
-    else if (val == "blue")      { code = IR_BLUE;      setRGBColor(0, 0, 255); }
-    else if (val == "white")     { code = IR_WHITE;     setRGBColor(255, 255, 255); }
-    else if (val == "orange")    { code = IR_ORANGE;    setRGBColor(255, 120, 0); }
-    else if (val == "cyan")      { code = IR_CYAN;      setRGBColor(0, 255, 255); }
-    else if (val == "purple")    { code = IR_PURPLE;    setRGBColor(255, 0, 255); }
+    else if (val == "red")       { code = IR_RED;       applyColor(255, 0, 0); }
+    else if (val == "green")     { code = IR_GREEN;     applyColor(0, 255, 0); }
+    else if (val == "blue")      { code = IR_BLUE;      applyColor(0, 0, 255); }
+    else if (val == "white")     { code = IR_WHITE;     applyColor(255, 255, 255); }
+    else if (val == "orange")    { code = IR_ORANGE;    applyColor(255, 120, 0); }
+    else if (val == "cyan")      { code = IR_CYAN;      applyColor(0, 255, 255); }
+    else if (val == "purple")    { code = IR_PURPLE;    applyColor(255, 0, 255); }
     else if (val == "flash")     { code = IR_FLASH; }
     else if (val == "smooth")    { code = IR_SMOOTH; }
 
     if (code != 0) {
       irsend.sendNEC(code, 32);
-      Serial.printf("[IR] Sent 0x%06X (%s)\n", code, val.c_str());
+      Serial.printf("[IR] Sent 0x%06X (%s) [Strip: %s]\n", code, val.c_str(), stripTarget.c_str());
       server.send(200, "application/json", "{\"status\":\"ok\"}");
       return;
     }
@@ -295,10 +315,15 @@ void setup() {
   digitalWrite(PIN_TRIG, LOW);
 
 #if ENABLE_DIRECT_RGB
-  pinMode(PIN_RGB_RED, OUTPUT);
-  pinMode(PIN_RGB_GREEN, OUTPUT);
-  pinMode(PIN_RGB_BLUE, OUTPUT);
-  setRGBColor(255, 255, 255); // Default to white
+  pinMode(PIN_RGB1_RED, OUTPUT);
+  pinMode(PIN_RGB1_GREEN, OUTPUT);
+  pinMode(PIN_RGB1_BLUE, OUTPUT);
+
+  pinMode(PIN_RGB2_RED, OUTPUT);
+  pinMode(PIN_RGB2_GREEN, OUTPUT);
+  pinMode(PIN_RGB2_BLUE, OUTPUT);
+
+  setBothRGBColors(255, 255, 255); // Default both strips to white
 #endif
 
   // Initialize IR Transmitter

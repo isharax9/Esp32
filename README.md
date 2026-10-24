@@ -33,7 +33,9 @@ A contact-free, non-invasive smart desk companion built on an **ESP32 DevKit V1*
 | **DHT11 Sensor** | DATA | GPIO 27 | 10kΩ pull-up to 3.3V (often on module PCB) |
 | | VCC | 3.3V or 5V Rail | Power rail |
 | | GND | GND Rail | Common ground |
-| **5V RGB USB Dongle** | IR Sensor | Facing IR LED | Align LED 2–10 cm from the dongle's receiver |
+| **RGB Strip 1 (Direct/Wokwi)** | R / G / B / COM | GPIO 23, 22, 21 / GND | 220Ω series resistors on R, G, B |
+| **RGB Strip 2 (Direct/Wokwi)** | R / G / B / COM | GPIO 19, 17, 16 / GND | 220Ω series resistors on R, G, B |
+| **5V RGB USB Dongles** | IR Sensor | Facing IR LED | Align LED 2–10 cm from the dongle receivers |
 | | USB Plug | 5V 2A USB Supply | Powered by external USB charger / host port |
 
 > [!CAUTION]

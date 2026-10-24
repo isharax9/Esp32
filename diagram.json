@@ -13,8 +13,8 @@
     {
       "type": "wokwi-hc-sr04",
       "id": "ultrasonic",
-      "top": -140,
-      "left": -130,
+      "top": -150,
+      "left": -140,
       "attrs": {
         "distance": "50"
       }
@@ -22,7 +22,7 @@
     {
       "type": "wokwi-dht22",
       "id": "dht",
-      "top": -140,
+      "top": -150,
       "left": 120,
       "attrs": {
         "temperature": "24",
@@ -32,14 +32,14 @@
     {
       "type": "wokwi-ir-receiver",
       "id": "ir_recv",
-      "top": 220,
-      "left": -130,
+      "top": 240,
+      "left": -140,
       "attrs": {}
     },
     {
       "type": "wokwi-resistor",
       "id": "r_ir",
-      "top": 160,
+      "top": 200,
       "left": 130,
       "attrs": {
         "value": "220"
@@ -48,8 +48,8 @@
     {
       "type": "wokwi-led",
       "id": "led_ir",
-      "top": 150,
-      "left": 230,
+      "top": 190,
+      "left": 240,
       "attrs": {
         "color": "purple",
         "label": "IR 940nm"
@@ -58,15 +58,24 @@
     {
       "type": "wokwi-rgb-led",
       "id": "rgb1",
-      "top": -40,
-      "left": 240,
+      "top": -60,
+      "left": 270,
       "attrs": {
         "common": "cathode"
       }
     },
     {
       "type": "wokwi-resistor",
-      "id": "r_red",
+      "id": "r_r1",
+      "top": -30,
+      "left": 140,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_g1",
       "top": 0,
       "left": 140,
       "attrs": {
@@ -75,7 +84,7 @@
     },
     {
       "type": "wokwi-resistor",
-      "id": "r_green",
+      "id": "r_b1",
       "top": 30,
       "left": 140,
       "attrs": {
@@ -83,9 +92,36 @@
       }
     },
     {
-      "type": "wokwi-resistor",
-      "id": "r_blue",
+      "type": "wokwi-rgb-led",
+      "id": "rgb2",
       "top": 60,
+      "left": 270,
+      "attrs": {
+        "common": "cathode"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_r2",
+      "top": 80,
+      "left": 140,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_g2",
+      "top": 110,
+      "left": 140,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_b2",
+      "top": 140,
       "left": 140,
       "attrs": {
         "value": "220"
@@ -114,12 +150,20 @@
     [ "led_ir:C", "esp:GND.2", "black", [ "v0" ] ],
 
     [ "rgb1:COM", "esp:GND.2", "black", [ "v0" ] ],
-    [ "esp:23", "r_red:1", "red", [ "v0" ] ],
-    [ "r_red:2", "rgb1:R", "red", [ "v0" ] ],
-    [ "esp:22", "r_green:1", "green", [ "v0" ] ],
-    [ "r_green:2", "rgb1:G", "green", [ "v0" ] ],
-    [ "esp:21", "r_blue:1", "blue", [ "v0" ] ],
-    [ "r_blue:2", "rgb1:B", "blue", [ "v0" ] ]
+    [ "esp:23", "r_r1:1", "red", [ "v0" ] ],
+    [ "r_r1:2", "rgb1:R", "red", [ "v0" ] ],
+    [ "esp:22", "r_g1:1", "green", [ "v0" ] ],
+    [ "r_g1:2", "rgb1:G", "green", [ "v0" ] ],
+    [ "esp:21", "r_b1:1", "blue", [ "v0" ] ],
+    [ "r_b1:2", "rgb1:B", "blue", [ "v0" ] ],
+
+    [ "rgb2:COM", "esp:GND.2", "black", [ "v0" ] ],
+    [ "esp:19", "r_r2:1", "red", [ "v0" ] ],
+    [ "r_r2:2", "rgb2:R", "red", [ "v0" ] ],
+    [ "esp:17", "r_g2:1", "green", [ "v0" ] ],
+    [ "r_g2:2", "rgb2:G", "green", [ "v0" ] ],
+    [ "esp:16", "r_b2:1", "blue", [ "v0" ] ],
+    [ "r_b2:2", "rgb2:B", "blue", [ "v0" ] ]
   ],
   "dependencies": {}
 }

@@ -22,11 +22,18 @@ const uint8_t  PIN_ECHO     = 18;  // HC-SR04 Ultrasonic Echo (use voltage divid
 const uint8_t  PIN_DHT      = 27;  // DHT11 Data pin (with 10k pull-up if bare sensor)
 #define DHTTYPE DHT11              // DHT 11 or DHT 22
 
-// Optional: Direct 4-Pin RGB LED pins (for Wokwi simulation and direct hardware connection)
+// Optional: Direct 4-Pin RGB LED pins for 2 Strips (Wokwi simulation + direct hardware wiring)
 #define ENABLE_DIRECT_RGB true
-const uint8_t PIN_RGB_RED   = 23;  // Direct Red pin (via 220R resistor)
-const uint8_t PIN_RGB_GREEN = 22;  // Direct Green pin (via 220R resistor)
-const uint8_t PIN_RGB_BLUE  = 21;  // Direct Blue pin (via 220R resistor)
+
+// RGB Strip 1
+const uint8_t PIN_RGB1_RED   = 23;  // Red pin via 220R
+const uint8_t PIN_RGB1_GREEN = 22;  // Green pin via 220R
+const uint8_t PIN_RGB1_BLUE  = 21;  // Blue pin via 220R
+
+// RGB Strip 2
+const uint8_t PIN_RGB2_RED   = 19;  // Red pin via 220R
+const uint8_t PIN_RGB2_GREEN = 17;  // Green pin via 220R
+const uint8_t PIN_RGB2_BLUE  = 16;  // Blue pin via 220R
 
 // ==========================================
 // Default 24-Key RGB IR Remote Codes (NEC 32-bit)

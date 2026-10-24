@@ -318,7 +318,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <!-- Virtual IR Remote Control Card -->
   <div class="card">
     <div class="card-title">
-      <span>Virtual IR Remote (5V RGB Strip)</span>
+      <span>Dual RGB Strip Lighting Control</span>
+    </div>
+    <div style="display:flex; gap:6px; margin-bottom:12px;">
+      <button id="strip-btn-all" class="btn btn-primary" style="padding:6px 10px; font-size:0.75rem;" onclick="setTargetStrip('all')">Both Strips</button>
+      <button id="strip-btn-1" class="btn btn-secondary" style="padding:6px 10px; font-size:0.75rem;" onclick="setTargetStrip('1')">Strip 1</button>
+      <button id="strip-btn-2" class="btn btn-secondary" style="padding:6px 10px; font-size:0.75rem;" onclick="setTargetStrip('2')">Strip 2</button>
     </div>
     <div class="remote-grid">
       <button class="btn-ir c-green" onclick="sendIR('on')">ON</button>
@@ -343,6 +348,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <script>
     let currentState = "IDLE";
     let isPaused = false;
+    let targetStrip = "all";
+
+    function setTargetStrip(strip) {
+      targetStrip = strip;
+      document.getElementById('strip-btn-all').className = (strip === 'all') ? 'btn btn-primary' : 'btn btn-secondary';
+      document.getElementById('strip-btn-1').className   = (strip === '1')   ? 'btn btn-primary' : 'btn btn-secondary';
+      document.getElementById('strip-btn-2').className   = (strip === '2')   ? 'btn btn-primary' : 'btn btn-secondary';
+      showToast(`Controlling: ${strip === 'all' ? 'Both Strips' : 'Strip ' + strip}`);
+    }
 
     function formatTime(sec) {
       const m = Math.floor(sec / 60);
@@ -439,8 +453,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     async function sendIR(cmd) {
       try {
-        await fetch(`/api/cmd?val=${cmd}`, { method: 'POST' });
-        showToast(`Sent IR: ${cmd.toUpperCase()}`);
+        await fetch(`/api/cmd?val=${cmd}&strip=${targetStrip}`, { method: 'POST' });
+        showToast(`Sent: ${cmd.toUpperCase()} (${targetStrip === 'all' ? 'All' : 'Strip ' + targetStrip})`);
       } catch (e) {
         showToast("Error sending command");
       }
