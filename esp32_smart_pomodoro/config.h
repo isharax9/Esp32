@@ -33,10 +33,10 @@ const uint8_t  PIN_DHT      = 27;  // DHT11 Data pin (with 10k pull-up if bare s
 // Keep FALSE when using direct breadboard RGB LEDs to prevent optical self-interference with VS1838B!
 #define ENABLE_EXTERNAL_IR_TRANSMIT false
 
-// RGB Strip 1: User's physical breadboard wiring (Red & Green swapped)
-const uint8_t PIN_RGB1_RED   = 22;  // Red pin
-const uint8_t PIN_RGB1_GREEN = 23;  // Green pin
-const uint8_t PIN_RGB1_BLUE  = 21;  // Blue pin
+// RGB Strip 1: Physical breadboard guide wiring (Red on D23, Green on D22, Blue on D21)
+const uint8_t PIN_RGB1_RED   = 23;  // Red pin (D23)
+const uint8_t PIN_RGB1_GREEN = 22;  // Green pin (D22)
+const uint8_t PIN_RGB1_BLUE  = 21;  // Blue pin (D21)
 
 // RGB Strip 2: Pins matching ESP32 DevKit V1 silk-screen
 const uint8_t PIN_RGB2_RED   = 19;  // Red pin (D19)

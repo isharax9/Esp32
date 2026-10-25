@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 Smart Pomodoro Breadboard Guide</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .wire { transition: stroke-opacity 0.25s, stroke-width 0.25s; }
+    .wire.dimmed { stroke-opacity: 0.12 !important; }
+    .wire.highlight { stroke-width: 4.5px !important; stroke-opacity: 1 !important; }
+    .comp-box { transition: all 0.2s; }
+    .comp-box:hover { filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6)); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased p-4 min-h-screen">
+
+  <div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header & Interactive Filter Bar -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span class="inline-block px-3 py-1 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold rounded-full mb-2">Wiring Blueprint</span>
+          <h1 class="text-xl md:text-2xl font-bold tracking-tight text-white">ESP32 Dual-RGB Desk Breadboard Diagram</h1>
+          <p class="text-slate-400 text-sm mt-1">Clean, color-coded visual wiring for breadboard assembly. Filter by step to wire one module at a time.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="setFilter('all')" id="btn-all" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm transition">All Wires</button>
+          <button onclick="setFilter('power')" id="btn-power" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">1. Power (5V/3V3/GND)</button>
+          <button onclick="setFilter('rgb')" id="btn-rgb" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">2. Dual RGBs</button>
+          <button onclick="setFilter('ultrasonic')" id="btn-ultrasonic" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">3. HC-SR04</button>
+          <button onclick="setFilter('ir')" id="btn-ir" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">4. IR Emitter/Recv</button>
+          <button onclick="setFilter('dht')" id="btn-dht" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">5. DHT Sensor</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual Breadboard Diagram (SVG) -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl overflow-x-auto">
+      <div class="min-w-[880px]">
+        <svg viewBox="0 0 1000 680" class="w-full h-auto select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Drop Shadow Filters -->
+            <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
+              <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.5"/>
+            </filter>
+            <!-- Resistor Pattern -->
+            <linearGradient id="resistorGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#d4b895"/>
+              <stop offset="25%" stop-color="#b82e2e"/>
+              <stop offset="50%" stop-color="#b82e2e"/>
+              <stop offset="75%" stop-color="#694017"/>
+              <stop offset="100%" stop-color="#d4b895"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Breadboard Body -->
+          <rect x="30" y="40" width="940" height="600" rx="16" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="3" filter="url(#shadow)"/>
+
+          <!-- Top Power Rails (Red = 5V / Blue = GND) -->
+          <rect x="50" y="60" width="900" height="35" rx="6" fill="#e2e8f0"/>
+          <line x1="60" y1="68" x2="940" y2="68" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="8 4"/>
+          <text x="70" y="66" fill="#ef4444" font-size="11" font-weight="bold">+ 5V RAIL</text>
+          <line x1="60" y1="86" x2="940" y2="86" stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="8 4"/>
+          <text x="70" y="84" fill="#3b82f6" font-size="11" font-weight="bold">- GND RAIL (TOP)</text>
+
+          <!-- Center Trench / Divider -->
+          <rect x="50" y="340" width="900" height="20" fill="#cbd5e1"/>
+          <text x="470" y="354" fill="#64748b" font-size="11" font-weight="bold">CENTER DIVIDER TRENCH</text>
+
+          <!-- Bottom Power Rails (Red = 3.3V / Blue = GND) -->
+          <rect x="50" y="585" width="900" height="35" rx="6" fill="#e2e8f0"/>
+          <line x1="60" y1="593" x2="940" y2="593" stroke="#f97316" stroke-width="2.5" stroke-dasharray="8 4"/>
+          <text x="70" y="591" fill="#f97316" font-size="11" font-weight="bold">+ 3.3V RAIL</text>
+          <line x1="60" y1="611" x2="940" y2="611" stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="8 4"/>
+          <text x="70" y="609" fill="#3b82f6" font-size="11" font-weight="bold">- GND RAIL (BOTTOM)</text>
+
+          <!-- ============================================== -->
+          <!-- 1. ESP32 DevKit V1 Module (Center-Mounted) -->
+          <!-- ============================================== -->
+          <g transform="translate(370, 180)" filter="url(#shadow)">
+            <!-- PCB Body -->
+            <rect x="0" y="0" width="220" height="320" rx="8" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+            <!-- Metal RF Shield -->
+            <rect x="50" y="20" width="120" height="90" rx="4" fill="#94a3b8" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="110" y="68" fill="#0f172a" font-size="14" font-weight="bold" text-anchor="middle">ESP-WROOM-32</text>
+            <!-- Micro-USB Jack -->
+            <rect x="85" y="295" width="50" height="28" rx="3" fill="#cbd5e1" stroke="#64748b"/>
+            <text x="110" y="312" fill="#334155" font-size="9" font-weight="bold" text-anchor="middle">USB</text>
+
+            <!-- LEFT PINS (Labels) -->
+            <g font-size="10" font-weight="600" fill="#94a3b8">
+              <text x="12" y="32">3V3</text>
+              <text x="12" y="52">EN</text>
+              <text x="12" y="72">VP (36)</text>
+              <text x="12" y="92">VN (39)</text>
+              <text x="12" y="112">D34</text>
+              <text x="12" y="132">D35</text>
+              <text x="12" y="152">D32</text>
+              <text x="12" y="172">D33</text>
+              <text x="12" y="192">D25</text>
+              <text x="12" y="212">D26</text>
+              <text x="12" y="232" fill="#22c55e" font-weight="bold">D27 (DHT)</text>
+              <text x="12" y="252">D14</text>
+              <text x="12" y="272">D12</text>
+              <text x="12" y="292" fill="#60a5fa" font-weight="bold">GND</text>
+              <text x="12" y="310" fill="#ef4444" font-weight="bold">VIN (5V)</text>
+            </g>
+
+            <!-- RIGHT PINS (Labels) -->
+            <g font-size="10" font-weight="600" fill="#94a3b8" text-anchor="end">
+              <text x="208" y="32" fill="#ef4444" font-weight="bold">D23 (R1)</text>
+              <text x="208" y="52" fill="#22c55e" font-weight="bold">D22 (G1)</text>
+              <text x="208" y="72">TX0</text>
+              <text x="208" y="92">RX0</text>
+              <text x="208" y="112" fill="#3b82f6" font-weight="bold">D21 (B1)</text>
+              <text x="208" y="132" fill="#ef4444" font-weight="bold">D19 (R2)</text>
+              <text x="208" y="152" fill="#eab308" font-weight="bold">D18 (Echo)</text>
+              <text x="208" y="172" fill="#f97316" font-weight="bold">D5 (Trig)</text>
+              <text x="208" y="192" fill="#22c55e" font-weight="bold">TX2 / 17 (G2)</text>
+              <text x="208" y="212" fill="#3b82f6" font-weight="bold">RX2 / 16 (B2)</text>
+              <text x="208" y="232" fill="#a855f7" font-weight="bold">D4 (IR LED)</text>
+              <text x="208" y="252">D2</text>
+              <text x="208" y="272" fill="#38bdf8" font-weight="bold">D15 (IR In)</text>
+              <text x="208" y="292">D0</text>
+              <text x="208" y="310">CLK</text>
+            </g>
+
+            <!-- Header Pin Circles Left -->
+            <circle cx="4" cy="28" r="3.5" fill="#e2e8f0" stroke="#000"/>
+            <circle cx="4" cy="228" r="3.5" fill="#22c55e" stroke="#000"/>
+            <circle cx="4" cy="288" r="3.5" fill="#60a5fa" stroke="#000"/>
+            <circle cx="4" cy="306" r="3.5" fill="#ef4444" stroke="#000"/>
+
+            <!-- Header Pin Circles Right -->
+            <circle cx="216" cy="28" r="3.5" fill="#ef4444" stroke="#000"/>
+            <circle cx="216" cy="48" r="3.5" fill="#22c55e" stroke="#000"/>
+            <circle cx="216" cy="108" r="3.5" fill="#3b82f6" stroke="#000"/>
+            <circle cx="216" cy="128" r="3.5" fill="#ef4444" stroke="#000"/>
+            <circle cx="216" cy="148" r="3.5" fill="#eab308" stroke="#000"/>
+            <circle cx="216" cy="168" r="3.5" fill="#f97316" stroke="#000"/>
+            <circle cx="216" cy="188" r="3.5" fill="#22c55e" stroke="#000"/>
+            <circle cx="216" cy="208" r="3.5" fill="#3b82f6" stroke="#000"/>
+            <circle cx="216" cy="228" r="3.5" fill="#a855f7" stroke="#000"/>
+            <circle cx="216" cy="268" r="3.5" fill="#38bdf8" stroke="#000"/>
+          </g>
+
+          <!-- ============================================== -->
+          <!-- 2. HC-SR04 Ultrasonic Distance Sensor -->
+          <!-- ============================================== -->
+          <g class="comp-box" transform="translate(70, 110)">
+            <rect x="0" y="0" width="170" height="90" rx="8" fill="#1e3a8a" stroke="#3b82f6" stroke-width="2"/>
+            <!-- Transducers -->
+            <circle cx="45" cy="45" r="28" fill="#cbd5e1" stroke="#475569" stroke-width="3"/>
+            <circle cx="45" cy="45" r="18" fill="#94a3b8"/>
+            <text x="45" y="49" fill="#1e293b" font-size="11" font-weight="bold" text-anchor="middle">T</text>
+            <circle cx="125" cy="45" r="28" fill="#cbd5e1" stroke="#475569" stroke-width="3"/>
+            <circle cx="125" cy="45" r="18" fill="#94a3b8"/>
+            <text x="125" y="49" fill="#1e293b" font-size="11" font-weight="bold" text-anchor="middle">R</text>
+            <text x="85" y="20" fill="#93c5fd" font-size="11" font-weight="bold" text-anchor="middle">HC-SR04</text>
+            <!-- Pins -->
+            <g font-size="9" fill="#f8fafc" font-weight="bold" text-anchor="middle">
+              <text x="50" y="84">VCC</text>
+              <text x="73" y="84">TRIG</text>
+              <text x="97" y="84">ECHO</text>
+              <text x="120" y="84">GND</text>
+            </g>
+          </g>
+
+          <!-- ============================================== -->
+          <!-- 3. DHT11 / DHT22 Sensor -->
+          <!-- ============================================== -->
+          <g class="comp-box" transform="translate(80, 240)">
+            <rect x="0" y="0" width="80" height="85" rx="6" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+            <!-- Vent grid lines -->
+            <line x1="20" y1="20" x2="60" y2="20" stroke="#cbd5e1" stroke-width="3"/>
+            <line x1="20" y1="30" x2="60" y2="30" stroke="#cbd5e1" stroke-width="3"/>
+            <line x1="20" y1="40" x2="60" y2="40" stroke="#cbd5e1" stroke-width="3"/>
+            <text x="40" y="58" fill="#334155" font-size="10" font-weight="bold" text-anchor="middle">DHT11/22</text>
+            <g font-size="8" fill="#475569" font-weight="bold" text-anchor="middle">
+              <text x="18" y="78">VCC</text>
+              <text x="40" y="78">DATA</text>
+              <text x="62" y="78">GND</text>
+            </g>
+          </g>
+
+          <!-- ============================================== -->
+          <!-- 4. VS1838B IR Receiver (Sniffer) -->
+          <!-- ============================================== -->
+          <g class="comp-box" transform="translate(80, 390)">
+            <rect x="0" y="0" width="75" height="70" rx="6" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+            <!-- Metal dome -->
+            <circle cx="37" cy="30" r="14" fill="#64748b" stroke="#94a3b8"/>
+            <text x="37" y="52" fill="#94a3b8" font-size="8" font-weight="bold" text-anchor="middle">VS1838B</text>
+            <g font-size="8" fill="#cbd5e1" font-weight="bold" text-anchor="middle">
+              <text x="16" y="66">OUT</text>
+              <text x="37" y="66">GND</text>
+              <text x="58" y="66">VCC</text>
+            </g>
+          </g>
+
+          <!-- ============================================== -->
+          <!-- 5. 940nm IR Emitter LED -->
+          <!-- ============================================== -->
+          <g class="comp-box" transform="translate(90, 500)">
+            <circle cx="30" cy="20" r="14" fill="#a855f7" stroke="#7e22ce" stroke-width="2"/>
+            <text x="30" y="24" fill="#ffffff" font-size="9" font-weight="bold" text-anchor="middle">IR</text>
+            <text x="30" y="45" fill="#a855f7" font-size="9" font-weight="bold" text-anchor="middle">940nm LED</text>
+            <text x="15" y="60" fill="#94a3b8" font-size="8">Anode(+)</text>
+            <text x="45" y="60" fill="#94a3b8" font-size="8">Cath(-)</text>
+          </g>
+
+          <!-- ============================================== -->
+          <!-- 6. RGB LED 1 (Strip 1) + 220R Resistors -->
+          <!-- ============================================== -->
+          <g class="comp-box" transform="translate(680, 110)">
+            <!-- LED Bulb -->
+            <circle cx="100" cy="35" r="24" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+            <circle cx="95" cy="25" r="4" fill="#ef4444" opacity="0.8"/>
+            <circle cx="105" cy="25" r="4" fill="#22c55e" opacity="0.8"/>
+            <circle cx="100" cy="35" r="4" fill="#3b82f6" opacity="0.8"/>
+            <text x="100" y="10" fill="#0f172a" font-size="12" font-weight="bold" text-anchor="middle">RGB LED 1 (Strip 1)</text>
+
+            <!-- 4 Pins: R, Anode, G, B -->
+            <g font-size="9" font-weight="bold">
+              <text x="25" y="80" fill="#ef4444">R</text>
+              <text x="75" y="80" fill="#f97316">COM(+3.3V)</text>
+              <text x="135" y="80" fill="#22c55e">G</text>
+              <text x="175" y="80" fill="#3b82f6">B</text>
+            </g>
+            <!-- Resistor representations -->
+            <rect x="15" y="90" width="30" height="12" rx="3" fill="url(#resistorGrad)" stroke="#475569"/>
+            <text x="30" y="115" fill="#64748b" font-size="8" text-anchor="middle">220Ω</text>
+
+            <rect x="125" y="90" width="30" height="12" rx="3" fill="url(#resistorGrad)" stroke="#475569"/>
+            <text x="140" y="115" fill="#64748b" font-size="8" text-anchor="middle">220Ω</text>
+
+            <rect x="165" y="90" width="30" height="12" rx="3" fill="url(#resistorGrad)" stroke="#475569"/>
+            <text x="180" y="115" fill="#64748b" font-size="8" text-anchor="middle">220Ω</text>
+          </g>
+
+          <!-- ============================================== -->
+          <!-- 7. RGB LED 2 (Strip 2) + 220R Resistors -->
+          <!-- ============================================== -->
+          <g class="comp-box" transform="translate(680, 310)">
+            <!-- LED Bulb -->
+            <circle cx="100" cy="35" r="24" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+            <circle cx="95" cy="25" r="4" fill="#ef4444" opacity="0.8"/>
+            <circle cx="105" cy="25" r="4" fill="#22c55e" opacity="0.8"/>
+            <circle cx="100" cy="35" r="4" fill="#3b82f6" opacity="0.8"/>
+            <text x="100" y="10" fill="#0f172a" font-size="12" font-weight="bold" text-anchor="middle">RGB LED 2 (Strip 2)</text>
+
+            <!-- 4 Pins: R, Anode, G, B -->
+            <g font-size="9" font-weight="bold">
+              <text x="25" y="80" fill="#ef4444">R</text>
+              <text x="75" y="80" fill="#f97316">COM(+3.3V)</text>
+              <text x="135" y="80" fill="#22c55e">G</text>
+              <text x="175" y="80" fill="#3b82f6">B</text>
+            </g>
+            <!-- Resistor representations -->
+            <rect x="15" y="90" width="30" height="12" rx="3" fill="url(#resistorGrad)" stroke="#475569"/>
+            <text x="30" y="115" fill="#64748b" font-size="8" text-anchor="middle">220Ω</text>
+
+            <rect x="125" y="90" width="30" height="12" rx="3" fill="url(#resistorGrad)" stroke="#475569"/>
+            <text x="140" y="115" fill="#64748b" font-size="8" text-anchor="middle">220Ω</text>
+
+            <rect x="165" y="90" width="30" height="12" rx="3" fill="url(#resistorGrad)" stroke="#475569"/>
+            <text x="180" y="115" fill="#64748b" font-size="8" text-anchor="middle">220Ω</text>
+          </g>
+
+          <!-- ============================================== -->
+          <!-- JUMPER WIRES (LAYER FILTERABLE) -->
+          <!-- ============================================== -->
+
+          <!-- 1. POWER WIRES (Red/Orange/Black) -->
+          <!-- ESP32 VIN -> +5V Rail -->
+          <path id="w-pwr-1" class="wire layer-power" d="M 374 486 L 310 486 L 310 68 L 360 68" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+          <!-- ESP32 3V3 -> +3.3V Rail -->
+          <path id="w-pwr-2" class="wire layer-power" d="M 374 208 L 320 208 L 320 593 L 360 593" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round"/>
+          <!-- ESP32 GND -> -GND Bottom Rail -->
+          <path id="w-pwr-3" class="wire layer-power" d="M 374 468 L 330 468 L 330 611 L 360 611" fill="none" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"/>
+          <!-- Top GND jumper to Bottom GND jumper -->
+          <path id="w-pwr-4" class="wire layer-power" d="M 940 86 L 960 86 L 960 611 L 940 611" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="4 2"/>
+
+          <!-- HC-SR04 VCC & GND -->
+          <path id="w-pwr-5" class="wire layer-power layer-ultrasonic" d="M 120 190 L 120 68" fill="none" stroke="#ef4444" stroke-width="2.5"/>
+          <path id="w-pwr-6" class="wire layer-power layer-ultrasonic" d="M 190 190 L 190 86" fill="none" stroke="#3b82f6" stroke-width="2.5"/>
+
+          <!-- DHT VCC & GND -->
+          <path id="w-pwr-7" class="wire layer-power layer-dht" d="M 98 320 L 98 593" fill="none" stroke="#f97316" stroke-width="2.5"/>
+          <path id="w-pwr-8" class="wire layer-power layer-dht" d="M 142 320 L 142 611" fill="none" stroke="#3b82f6" stroke-width="2.5"/>
+
+          <!-- IR Receiver VCC & GND -->
+          <path id="w-pwr-9" class="wire layer-power layer-ir" d="M 138 450 L 138 593" fill="none" stroke="#f97316" stroke-width="2.5"/>
+          <path id="w-pwr-10" class="wire layer-power layer-ir" d="M 117 450 L 117 611" fill="none" stroke="#3b82f6" stroke-width="2.5"/>
+
+          <!-- IR LED Cathode (-) to GND -->
+          <path id="w-pwr-11" class="wire layer-power layer-ir" d="M 135 550 L 135 611" fill="none" stroke="#3b82f6" stroke-width="2.5"/>
+
+          <!-- RGB 1 & 2 COM (Anode) to +3.3V Rail -->
+          <path id="w-pwr-12" class="wire layer-power layer-rgb" d="M 770 190 L 770 593" fill="none" stroke="#f97316" stroke-width="2.5"/>
+          <path id="w-pwr-13" class="wire layer-power layer-rgb" d="M 770 390 L 770 593" fill="none" stroke="#f97316" stroke-width="2.5"/>
+
+          <!-- 2. ULTRASONIC SIGNAL WIRES -->
+          <!-- Trig (GPIO 5) -> HC-SR04 TRIG -->
+          <path id="w-us-1" class="wire layer-ultrasonic" d="M 586 348 L 586 370 L 250 370 L 250 170 L 143 170 L 143 190" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round"/>
+          <text x="210" y="365" fill="#f97316" font-size="9" font-weight="bold">Trig (GPIO 5)</text>
+
+          <!-- Echo (GPIO 18) -> HC-SR04 ECHO -->
+          <path id="w-us-2" class="wire layer-ultrasonic" d="M 586 328 L 600 328 L 600 385 L 235 385 L 235 155 L 167 155 L 167 190" fill="none" stroke="#eab308" stroke-width="3" stroke-linecap="round"/>
+          <text x="210" y="400" fill="#eab308" font-size="9" font-weight="bold">Echo (GPIO 18)</text>
+
+          <!-- 3. DHT SENSOR DATA WIRE -->
+          <!-- DHT Data -> ESP32 GPIO 27 -->
+          <path id="w-dht-1" class="wire layer-dht" d="M 120 320 L 120 335 L 340 335 L 340 408 L 374 408" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"/>
+          <text x="210" y="330" fill="#22c55e" font-size="9" font-weight="bold">DHT Data (GPIO 27)</text>
+
+          <!-- 4. IR EMITTER & RECEIVER WIRES -->
+          <!-- ESP32 GPIO 4 -> IR LED 220R Resistor -> Anode -->
+          <path id="w-ir-1" class="wire layer-ir" d="M 586 408 L 620 408 L 620 540 L 105 540 L 105 530" fill="none" stroke="#a855f7" stroke-width="3" stroke-linecap="round"/>
+          <text x="630" y="520" fill="#a855f7" font-size="9" font-weight="bold">IR TX (GPIO 4 via 220Ω)</text>
+
+          <!-- IR Receiver OUT -> ESP32 GPIO 15 -->
+          <path id="w-ir-2" class="wire layer-ir" d="M 96 450 L 96 465 L 350 465 L 350 448 L 586 448" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+          <text x="200" y="460" fill="#38bdf8" font-size="9" font-weight="bold">IR RX Data (GPIO 15)</text>
+
+          <!-- 5. DUAL RGB STRIPS WIRES -->
+          <!-- Strip 1: Red (GPIO 23) -->
+          <path id="w-rgb-1" class="wire layer-rgb" d="M 586 208 L 640 208 L 640 230 L 710 230 L 710 215" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+          <!-- Strip 1: Green (GPIO 22) -->
+          <path id="w-rgb-2" class="wire layer-rgb" d="M 586 228 L 650 228 L 650 245 L 820 245 L 820 215" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"/>
+          <!-- Strip 1: Blue (GPIO 21) -->
+          <path id="w-rgb-3" class="wire layer-rgb" d="M 586 288 L 660 288 L 660 260 L 860 260 L 860 215" fill="none" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"/>
+
+          <!-- Strip 2: Red (GPIO 19) -->
+          <path id="w-rgb-4" class="wire layer-rgb" d="M 586 308 L 670 308 L 670 430 L 710 430 L 710 415" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+          <!-- Strip 2: Green (GPIO 17) -->
+          <path id="w-rgb-5" class="wire layer-rgb" d="M 586 368 L 680 368 L 680 445 L 820 445 L 820 415" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"/>
+          <!-- Strip 2: Blue (GPIO 16) -->
+          <path id="w-rgb-6" class="wire layer-rgb" d="M 586 388 L 690 388 L 690 460 L 860 460 L 860 415" fill="none" stroke="#3b82f6" stroke-width="3" stroke-linecap="round"/>
+
+        </svg>
+      </div>
+    </div>
+
+    <!-- 4-Pin RGB Physical Pinout Reference Card -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+        <h3 class="text-white font-semibold text-base mb-3 flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+          4-Pin RGB Bulb Leg Identification
+        </h3>
+        <p class="text-slate-400 text-xs mb-4">Hold the bulb with legs facing down and the flat edge of the rim on the left:</p>
+        <div class="bg-slate-950 p-4 rounded-lg border border-slate-800 flex items-center justify-around text-center">
+          <div>
+            <div class="h-10 w-1 bg-red-500 mx-auto rounded"></div>
+            <span class="text-xs font-bold text-red-400 block mt-2">Pin 1</span>
+            <span class="text-[11px] text-slate-400">RED (+)</span>
+            <span class="text-[10px] text-slate-500 block">220Ω Resistor</span>
+          </div>
+          <div>
+            <div class="h-14 w-1 bg-amber-500 mx-auto rounded"></div>
+            <span class="text-xs font-bold text-amber-400 block mt-2">Pin 2 (Longest)</span>
+            <span class="text-[11px] text-slate-300">ANODE (+)</span>
+            <span class="text-[10px] text-amber-400 block font-semibold">Direct to +3.3V Rail</span>
+          </div>
+          <div>
+            <div class="h-11 w-1 bg-green-500 mx-auto rounded"></div>
+            <span class="text-xs font-bold text-green-400 block mt-2">Pin 3</span>
+            <span class="text-[11px] text-slate-400">GREEN (+)</span>
+            <span class="text-[10px] text-slate-500 block">220Ω Resistor</span>
+          </div>
+          <div>
+            <div class="h-9 w-1 bg-blue-400 mx-auto rounded"></div>
+            <span class="text-xs font-bold text-blue-300 block mt-2">Pin 4</span>
+            <span class="text-[11px] text-slate-400">BLUE (+)</span>
+            <span class="text-[10px] text-slate-500 block">220Ω Resistor</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ultrasonic Echo Voltage Divider Note -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+        <h3 class="text-white font-semibold text-base mb-3 flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+          Ultrasonic Sensor Echo 3.3V Safety
+        </h3>
+        <p class="text-slate-400 text-xs mb-3">HC-SR04 operates at 5V. In physical breadboard builds, protect GPIO 18 by dropping Echo to 3.3V:</p>
+        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-300 space-y-1">
+          <div>Echo Pin ──[ 1kΩ Resistor ]──┬──> ESP32 GPIO 18</div>
+          <div class="text-slate-500 pl-28">│</div>
+          <div class="text-slate-400 pl-24">[ 2kΩ Resistor ]</div>
+          <div class="text-slate-500 pl-28">│</div>
+          <div class="text-blue-400 pl-27">GND</div>
+        </div>
+        <p class="text-slate-500 text-[11px] mt-2 leading-relaxed">In Wokwi simulation, you can connect Echo straight to GPIO 18 without damage.</p>
+      </div>
+    </div>
+
+    <!-- Step-by-Step Connection Checklist Table -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl overflow-x-auto">
+      <h3 class="text-white font-semibold text-base mb-4">Complete Pin-to-Breadboard Checklist</h3>
+      <table class="w-full text-left text-xs text-slate-300 border-collapse">
+        <thead>
+          <tr class="border-b border-slate-800 text-slate-400 uppercase text-[11px]">
+            <th class="py-2.5 px-3">Done</th>
+            <th class="py-2.5 px-3">Module</th>
+            <th class="py-2.5 px-3">Component Pin</th>
+            <th class="py-2.5 px-3">Connects To</th>
+            <th class="py-2.5 px-3">Wire Color</th>
+            <th class="py-2.5 px-3">Inline Resistor</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/60 font-mono">
+          <!-- Power -->
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">ESP32 Power</td>
+            <td class="py-2 px-3">VIN</td>
+            <td class="py-2 px-3 text-red-400">+5V Rail (Top)</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5 align-middle"></span>Red</td>
+            <td class="py-2 px-3 text-slate-500">None</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">ESP32 Power</td>
+            <td class="py-2 px-3">3V3</td>
+            <td class="py-2 px-3 text-orange-400">+3.3V Rail (Bottom)</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-orange-500 mr-1.5 align-middle"></span>Orange</td>
+            <td class="py-2 px-3 text-slate-500">None</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">ESP32 Power</td>
+            <td class="py-2 px-3">GND</td>
+            <td class="py-2 px-3 text-blue-400">- GND Rail (Both)</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-blue-500 mr-1.5 align-middle"></span>Blue / Black</td>
+            <td class="py-2 px-3 text-slate-500">None</td>
+          </tr>
+
+          <!-- RGB 1 -->
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 1</td>
+            <td class="py-2 px-3">Red (Pin 1)</td>
+            <td class="py-2 px-3 text-red-400">GPIO 23</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5 align-middle"></span>Red</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 1</td>
+            <td class="py-2 px-3">Anode COM (Pin 2)</td>
+            <td class="py-2 px-3 text-orange-400">+3.3V Rail</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-orange-500 mr-1.5 align-middle"></span>Orange / Red</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 1</td>
+            <td class="py-2 px-3">Green (Pin 3)</td>
+            <td class="py-2 px-3 text-green-400">GPIO 22</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-1.5 align-middle"></span>Green</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 1</td>
+            <td class="py-2 px-3">Blue (Pin 4)</td>
+            <td class="py-2 px-3 text-blue-400">GPIO 21</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-blue-500 mr-1.5 align-middle"></span>Blue</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+
+          <!-- RGB 2 -->
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 2</td>
+            <td class="py-2 px-3">Red (Pin 1)</td>
+            <td class="py-2 px-3 text-red-400">GPIO 19</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5 align-middle"></span>Red</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 2</td>
+            <td class="py-2 px-3">Anode COM (Pin 2)</td>
+            <td class="py-2 px-3 text-orange-400">+3.3V Rail</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-orange-500 mr-1.5 align-middle"></span>Orange / Red</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 2</td>
+            <td class="py-2 px-3">Green (Pin 3)</td>
+            <td class="py-2 px-3 text-green-400">GPIO 17</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-1.5 align-middle"></span>Green</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">RGB Strip 2</td>
+            <td class="py-2 px-3">Blue (Pin 4)</td>
+            <td class="py-2 px-3 text-blue-400">GPIO 16</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-blue-500 mr-1.5 align-middle"></span>Blue</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+
+          <!-- Ultrasonic -->
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">HC-SR04</td>
+            <td class="py-2 px-3">TRIG</td>
+            <td class="py-2 px-3 text-orange-400">GPIO 5</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-orange-500 mr-1.5 align-middle"></span>Orange</td>
+            <td class="py-2 px-3 text-slate-500">None</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">HC-SR04</td>
+            <td class="py-2 px-3">ECHO</td>
+            <td class="py-2 px-3 text-yellow-400">GPIO 18</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-yellow-400 mr-1.5 align-middle"></span>Yellow</td>
+            <td class="py-2 px-3 text-slate-400">1kΩ/2kΩ divider (hardware)</td>
+          </tr>
+
+          <!-- IR TX & RX -->
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">IR LED</td>
+            <td class="py-2 px-3">Anode (+)</td>
+            <td class="py-2 px-3 text-purple-400">GPIO 4</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-purple-500 mr-1.5 align-middle"></span>Purple</td>
+            <td class="py-2 px-3 text-amber-300 font-semibold">220Ω</td>
+          </tr>
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">IR Receiver</td>
+            <td class="py-2 px-3">OUT / Signal</td>
+            <td class="py-2 px-3 text-sky-400">GPIO 15</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-sky-400 mr-1.5 align-middle"></span>Blue / Cyan</td>
+            <td class="py-2 px-3 text-slate-500">None</td>
+          </tr>
+
+          <!-- DHT -->
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2 px-3"><input type="checkbox" class="rounded bg-slate-800 border-slate-700"></td>
+            <td class="py-2 px-3 font-sans font-semibold text-white">DHT11 / 22</td>
+            <td class="py-2 px-3">DATA</td>
+            <td class="py-2 px-3 text-green-400">GPIO 27</td>
+            <td class="py-2 px-3"><span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-1.5 align-middle"></span>Green</td>
+            <td class="py-2 px-3 text-slate-500">10kΩ pullup if bare</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script>
+    function setFilter(layer) {
+      // Button states
+      const btnIds = ['all', 'power', 'rgb', 'ultrasonic', 'ir', 'dht'];
+      btnIds.forEach(id => {
+        const btn = document.getElementById('btn-' + id);
+        if (id === layer) {
+          btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm transition";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition";
+        }
+      });
+
+      // Wire dimming
+      const allWires = document.querySelectorAll('.wire');
+      allWires.forEach(w => {
+        if (layer === 'all') {
+          w.classList.remove('dimmed');
+          w.classList.remove('highlight');
+        } else if (w.classList.contains('layer-' + layer)) {
+          w.classList.remove('dimmed');
+          w.classList.add('highlight');
+        } else {
+          w.classList.add('dimmed');
+          w.classList.remove('highlight');
+        }
+      });
+    }
+  </script>
+</body>
+</html>

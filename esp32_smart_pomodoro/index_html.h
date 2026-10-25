@@ -924,8 +924,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span style="color:var(--text-sub); font-size:0.72rem;">Desk Left</span>
           </div>
           <div class="pin-badges">
-            <span id="p1-r" class="p-badge p-red">R: GPIO 22</span>
-            <span id="p1-g" class="p-badge p-green">G: GPIO 23</span>
+            <span id="p1-r" class="p-badge p-red">R: GPIO 23</span>
+            <span id="p1-g" class="p-badge p-green">G: GPIO 22</span>
             <span id="p1-b" class="p-badge p-blue">B: GPIO 21</span>
           </div>
           <div class="cal-btn-row">
