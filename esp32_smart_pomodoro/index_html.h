@@ -485,6 +485,55 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       box-shadow: 0 0 18px rgba(59, 130, 246, 0.35);
     }
 
+    /* Strobe Control Box */
+    .strobe-box {
+      background: rgba(11, 16, 30, 0.75);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: 18px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      animation: tabFadeIn 0.25s ease-out;
+    }
+    .strobe-box-title {
+      font-size: 0.82rem;
+      font-weight: 800;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      color: #93c5fd;
+    }
+    .strobe-pills {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .strobe-pill {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      background: rgba(15, 23, 42, 0.7);
+      color: var(--text-dim);
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+    }
+    .strobe-pill:active { transform: scale(0.97); }
+    .strobe-pill.active {
+      background: rgba(59, 130, 246, 0.22);
+      border-color: var(--blue);
+      color: #ffffff;
+      box-shadow: 0 0 14px rgba(59, 130, 246, 0.4);
+    }
+    .strobe-tip {
+      font-size: 0.72rem;
+      color: var(--text-sub);
+      margin-top: 10px;
+      line-height: 1.45;
+    }
+
     /* Brightness Slider */
     .slider-wrap {
       display: flex;
@@ -855,20 +904,35 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <div class="fx-grid">
           <button id="fx-flash" class="fx-btn" onclick="sendCmd('flash')">
             <span style="font-size:1.3rem;">⚡</span>
-            <div><div>FLASH</div><div style="font-size:0.68rem; color:var(--text-dim);">7-Color Jump</div></div>
+            <div><div>FLASH</div><div style="font-size:0.68rem; color:var(--text-dim);">7-Color Flow</div></div>
           </button>
           <button id="fx-strobe" class="fx-btn" onclick="sendCmd('strobe')">
             <span style="font-size:1.3rem;">✨</span>
-            <div><div>STROBE</div><div style="font-size:0.68rem; color:var(--text-dim);">Pure Pulse</div></div>
+            <div><div>STROBE</div><div style="font-size:0.68rem; color:var(--text-dim);">Color / RGB / Wave</div></div>
           </button>
           <button id="fx-fade" class="fx-btn" onclick="sendCmd('fade')">
             <span style="font-size:1.3rem;">🌈</span>
-            <div><div>FADE</div><div style="font-size:0.68rem; color:var(--text-dim);">Rainbow Cycle</div></div>
+            <div><div>FADE</div><div style="font-size:0.68rem; color:var(--text-dim);">Rainbow Wave</div></div>
           </button>
           <button id="fx-smooth" class="fx-btn" onclick="sendCmd('smooth')">
             <span style="font-size:1.3rem;">🌊</span>
             <div><div>SMOOTH</div><div style="font-size:0.68rem; color:var(--text-dim);">Ambient Breath</div></div>
           </button>
+        </div>
+
+        <!-- Strobe Custom Color & Animation Mode Panel -->
+        <div id="strobe-panel" class="strobe-box" style="display:none;">
+          <div class="strobe-box-title">
+            <span>⚡ Strobe Color & Animation</span>
+            <span id="strobe-mode-badge" style="font-size:0.68rem; padding:3px 8px; border-radius:999px; background:rgba(59,130,246,0.2); color:#93c5fd; font-weight:800;">ACTIVE</span>
+          </div>
+          <div class="strobe-pills">
+            <button id="strobe-mode-0" class="strobe-pill active" onclick="setStrobeMode('color')">🎨 Selected Color</button>
+            <button id="strobe-mode-1" class="strobe-pill" onclick="setStrobeMode('rgb')">🔴🟢🔵 RGB Cycle</button>
+            <button id="strobe-mode-2" class="strobe-pill" onclick="setStrobeMode('rainbow')">🌈 Rainbow Cycle</button>
+            <button id="strobe-mode-3" class="strobe-pill" onclick="setStrobeMode('white')">⚪ Pure White</button>
+          </div>
+          <div class="strobe-tip">✨ <b>Smooth Color Control:</b> Tap any static color chip above to strobe that exact color!</div>
         </div>
       </div>
     </div>
@@ -1178,15 +1242,34 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     // ==========================================
     // Backend API Interaction
     // ==========================================
+    const colorCmds = ["red","green","blue","white","orange","pea_green","dark_blue","cyan","dark_orange","ice_blue","purple","magenta","yellow","light_blue","pink","light_orange"];
+    let currentEffectVal = 0;
+
     async function sendCmd(val) {
       hapticTap();
       try {
+        if (currentEffectVal === 2 && colorCmds.includes(val)) {
+          // Strobe is active: update strobe color directly
+          await fetch(`/api/cmd?val=${val}&strobe=1&strip=${targetStrip}`, { method: 'POST' });
+          showToast(`Strobe Color: ${val.toUpperCase()} ⚡`);
+          updateStatus();
+          return;
+        }
         await fetch(`/api/cmd?val=${val}&strip=${targetStrip}`, { method: 'POST' });
         showToast(`Sent: ${val.toUpperCase()}`);
         updateStatus();
       } catch (e) {
         showToast("Error sending command");
       }
+    }
+
+    async function setStrobeMode(mode) {
+      hapticTap();
+      try {
+        await fetch(`/api/cmd?val=strobe_mode&mode=${mode}&strip=${targetStrip}`, { method: 'POST' });
+        showToast(`Strobe: ${mode.toUpperCase()} ⚡`);
+        updateStatus();
+      } catch (e) {}
     }
 
     function onBrightnessInput(val) {
@@ -1374,12 +1457,30 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           document.getElementById("hum-comfort").innerText = hComp;
         }
 
+        currentEffectVal = d.effect;
+
         // Effect Mode Indicators
         const fxMap = { 1: "fx-flash", 2: "fx-strobe", 3: "fx-fade", 4: "fx-smooth" };
         document.querySelectorAll('.fx-btn').forEach(b => b.classList.remove('active'));
         if (fxMap[d.effect]) {
           const act = document.getElementById(fxMap[d.effect]);
           if (act) act.classList.add('active');
+        }
+
+        // Strobe Panel Visibility & Active Mode Pill
+        const strobePanel = document.getElementById("strobe-panel");
+        if (d.effect === 2) {
+          if (strobePanel) strobePanel.style.display = "block";
+          const sMode = (d.strobeMode !== undefined) ? d.strobeMode : 0;
+          for (let i = 0; i < 4; i++) {
+            const btn = document.getElementById(`strobe-mode-${i}`);
+            if (btn) {
+              if (sMode === i) btn.classList.add("active");
+              else btn.classList.remove("active");
+            }
+          }
+        } else {
+          if (strobePanel) strobePanel.style.display = "none";
         }
 
         // Dynamic Pin Status

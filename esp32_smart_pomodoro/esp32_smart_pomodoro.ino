@@ -44,19 +44,41 @@ unsigned long lastDHTReadMs  = 0;
 
 // Brightness & Dynamic Lighting Effects
 uint8_t currentBrightness = 255; // 0-255 scale
-uint8_t baseR = 0, baseG = 0, baseB = 0; // Stored base color before brightness scaling
+uint8_t baseR = 255, baseG = 255, baseB = 255; // Stored base color before brightness scaling
 
 enum EffectMode {
-  FX_NONE,
-  FX_FLASH,
-  FX_STROBE,
-  FX_FADE,
-  FX_SMOOTH
+  FX_NONE   = 0,
+  FX_FLASH  = 1,
+  FX_STROBE = 2,
+  FX_FADE   = 3,
+  FX_SMOOTH = 4
 };
 
-EffectMode currentEffect = FX_NONE;
+enum StrobeMode {
+  STROBE_COLOR   = 0, // Strobes user's chosen active color (Red, Blue, Cyan, etc.)
+  STROBE_RGB     = 1, // Cycles: Red flash -> Green flash -> Blue flash
+  STROBE_RAINBOW = 2, // Cycles through 7 vibrant rainbow colors on each pulse
+  STROBE_WHITE   = 3  // Crisp moonlight pure white strobe
+};
+
+EffectMode currentEffect     = FX_NONE;
+StrobeMode currentStrobeMode = STROBE_COLOR;
 unsigned long lastEffectUpdateMs = 0;
 uint16_t effectStep = 0;
+
+// Smooth Dynamic Transitions State
+float tgtR1 = 0.0f, tgtG1 = 0.0f, tgtB1 = 0.0f;
+float tgtR2 = 0.0f, tgtG2 = 0.0f, tgtB2 = 0.0f;
+float curR1 = 0.0f, curG1 = 0.0f, curB1 = 0.0f;
+float curR2 = 0.0f, curG2 = 0.0f, curB2 = 0.0f;
+bool inTransition = false;
+
+// Effect Animation Steppers
+float fadeHue = 0.0f;
+float smoothAngle = 0.0f;
+uint8_t flashColorIndex = 0;
+unsigned long flashStepStartMs = 0;
+uint8_t strobeColorIndex = 0;
 
 // Hardware Peripherals
 IRsend irsend(PIN_IR_LED);
@@ -143,42 +165,91 @@ void setRGB2ColorRaw(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void setRGB1Color(uint8_t r, uint8_t g, uint8_t b) {
-  uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
-  uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
-  uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
-  setRGB1ColorRaw(sr, sg, sb);
+  tgtR1 = ((uint16_t)r * currentBrightness) / 255.0f;
+  tgtG1 = ((uint16_t)g * currentBrightness) / 255.0f;
+  tgtB1 = ((uint16_t)b * currentBrightness) / 255.0f;
+  inTransition = true;
 }
 
 void setRGB2Color(uint8_t r, uint8_t g, uint8_t b) {
-  uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
-  uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
-  uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
-  setRGB2ColorRaw(sr, sg, sb);
+  tgtR2 = ((uint16_t)r * currentBrightness) / 255.0f;
+  tgtG2 = ((uint16_t)g * currentBrightness) / 255.0f;
+  tgtB2 = ((uint16_t)b * currentBrightness) / 255.0f;
+  inTransition = true;
 }
 
 void setBothRGBColors(uint8_t r, uint8_t g, uint8_t b) {
   baseR = r;
   baseG = g;
   baseB = b;
-  uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
-  uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
-  uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
-  setRGB1ColorRaw(sr, sg, sb);
-  setRGB2ColorRaw(sr, sg, sb);
+  tgtR1 = ((uint16_t)r * currentBrightness) / 255.0f;
+  tgtG1 = ((uint16_t)g * currentBrightness) / 255.0f;
+  tgtB1 = ((uint16_t)b * currentBrightness) / 255.0f;
+  tgtR2 = ((uint16_t)r * currentBrightness) / 255.0f;
+  tgtG2 = ((uint16_t)g * currentBrightness) / 255.0f;
+  tgtB2 = ((uint16_t)b * currentBrightness) / 255.0f;
+  inTransition = true;
+}
+
+void setImmediateBothRGB(uint8_t r, uint8_t g, uint8_t b) {
+  baseR = r; baseG = g; baseB = b;
+  curR1 = tgtR1 = ((uint16_t)r * currentBrightness) / 255.0f;
+  curG1 = tgtG1 = ((uint16_t)g * currentBrightness) / 255.0f;
+  curB1 = tgtB1 = ((uint16_t)b * currentBrightness) / 255.0f;
+  curR2 = tgtR2 = ((uint16_t)r * currentBrightness) / 255.0f;
+  curG2 = tgtG2 = ((uint16_t)g * currentBrightness) / 255.0f;
+  curB2 = tgtB2 = ((uint16_t)b * currentBrightness) / 255.0f;
+  inTransition = false;
+  setRGB1ColorRaw((uint8_t)round(curR1), (uint8_t)round(curG1), (uint8_t)round(curB1));
+  setRGB2ColorRaw((uint8_t)round(curR2), (uint8_t)round(curG2), (uint8_t)round(curB2));
+}
+
+// 100 FPS Smooth Color Crossfade Engine for Static Lighting
+void updateColorTransitions() {
+  if (currentEffect != FX_NONE && !inTransition) return;
+
+  static unsigned long lastTransMs = 0;
+  unsigned long now = millis();
+  if (now - lastTransMs < 10) return;
+  lastTransMs = now;
+
+  if (currentEffect == FX_NONE) {
+    const float alpha = 0.12f; // Smooth exponential approach (~250ms feel)
+    auto stepChannel = [](float &cur, float tgt, float a) {
+      float diff = tgt - cur;
+      if (fabs(diff) < 0.5f) {
+        cur = tgt;
+      } else {
+        cur += diff * a;
+      }
+    };
+
+    stepChannel(curR1, tgtR1, alpha);
+    stepChannel(curG1, tgtG1, alpha);
+    stepChannel(curB1, tgtB1, alpha);
+
+    stepChannel(curR2, tgtR2, alpha);
+    stepChannel(curG2, tgtG2, alpha);
+    stepChannel(curB2, tgtB2, alpha);
+
+    setRGB1ColorRaw((uint8_t)round(curR1), (uint8_t)round(curG1), (uint8_t)round(curB1));
+    setRGB2ColorRaw((uint8_t)round(curR2), (uint8_t)round(curG2), (uint8_t)round(curB2));
+
+    if (curR1 == tgtR1 && curG1 == tgtG1 && curB1 == tgtB1 &&
+        curR2 == tgtR2 && curG2 == tgtG2 && curB2 == tgtB2) {
+      inTransition = false;
+    }
+  }
 }
 
 void updateBrightness(int8_t step) {
   int newB = (int)currentBrightness + (step * 51);
-  if (newB < 25) newB = 25;       // Minimum 10%
-  if (newB > 255) newB = 255;   // Maximum 100%
+  if (newB < 25) newB = 25;     // Minimum 10%
+  if (newB > 255) newB = 255; // Maximum 100%
   currentBrightness = (uint8_t)newB;
   Serial.printf("[BRIGHTNESS] Level: %d/255 (%d%%)\n", currentBrightness, (currentBrightness * 100) / 255);
   if (currentEffect == FX_NONE) {
-    uint8_t sr = ((uint16_t)baseR * currentBrightness) / 255;
-    uint8_t sg = ((uint16_t)baseG * currentBrightness) / 255;
-    uint8_t sb = ((uint16_t)baseB * currentBrightness) / 255;
-    setRGB1ColorRaw(sr, sg, sb);
-    setRGB2ColorRaw(sr, sg, sb);
+    setBothRGBColors(baseR, baseG, baseB);
   }
 }
 
@@ -204,65 +275,142 @@ void hsvToRgb(uint16_t h, uint8_t s, uint8_t v, uint8_t &r, uint8_t &g, uint8_t 
   }
 }
 
+const uint8_t FLASH_PALETTE[7][3] = {
+  {255, 0, 0},     // Red
+  {255, 120, 0},   // Amber / Orange
+  {255, 230, 0},   // Warm Yellow
+  {0, 255, 0},     // Pure Green
+  {0, 220, 255},   // Cyan / Sky
+  {0, 30, 255},    // Deep Blue
+  {220, 0, 255}    // Magenta / Violet
+};
+
+// ==========================================
+// Dynamic Lighting Effects Engine
+// ==========================================
 void updateEffects() {
   if (currentEffect == FX_NONE) return;
-
   unsigned long now = millis();
 
   if (currentEffect == FX_FLASH) {
-    // 7-color jumping cycle every 350ms
-    if (now - lastEffectUpdateMs >= 350) {
+    // Smooth 7-color jumping cycle with cosine crossfade transitions
+    if (now - lastEffectUpdateMs >= 15) { // 66 FPS smooth animation
       lastEffectUpdateMs = now;
-      const uint8_t flashColors[7][3] = {
-        {255, 0, 0},     // Red
-        {0, 255, 0},     // Green
-        {0, 0, 255},     // Blue
-        {255, 255, 0},   // Yellow
-        {0, 255, 255},   // Cyan
-        {255, 0, 255},   // Magenta
-        {255, 255, 255}  // White
-      };
-      effectStep = (effectStep + 1) % 7;
-      uint8_t r = flashColors[effectStep][0];
-      uint8_t g = flashColors[effectStep][1];
-      uint8_t b = flashColors[effectStep][2];
-      uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
-      uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
-      uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
+      if (flashStepStartMs == 0) flashStepStartMs = now;
+      unsigned long elapsed = now - flashStepStartMs;
+
+      uint8_t fromIdx = flashColorIndex;
+      uint8_t toIdx = (flashColorIndex + 1) % 7;
+
+      float ease = 1.0f;
+      if (elapsed < 340) {
+        float p = (float)elapsed / 340.0f;
+        ease = (1.0f - cos(p * 3.14159265f)) * 0.5f; // Smooth ease-in-out
+      }
+
+      float r = FLASH_PALETTE[fromIdx][0] + (FLASH_PALETTE[toIdx][0] - FLASH_PALETTE[fromIdx][0]) * ease;
+      float g = FLASH_PALETTE[fromIdx][1] + (FLASH_PALETTE[toIdx][1] - FLASH_PALETTE[fromIdx][1]) * ease;
+      float b = FLASH_PALETTE[fromIdx][2] + (FLASH_PALETTE[toIdx][2] - FLASH_PALETTE[fromIdx][2]) * ease;
+
+      uint8_t sr = (uint8_t)round((r * currentBrightness) / 255.0f);
+      uint8_t sg = (uint8_t)round((g * currentBrightness) / 255.0f);
+      uint8_t sb = (uint8_t)round((b * currentBrightness) / 255.0f);
+
+      curR1 = curR2 = sr;
+      curG1 = curG2 = sg;
+      curB1 = curB2 = sb;
       setRGB1ColorRaw(sr, sg, sb);
       setRGB2ColorRaw(sr, sg, sb);
+
+      if (elapsed >= 560) {
+        flashColorIndex = toIdx;
+        flashStepStartMs = now;
+      }
     }
-  } else if (currentEffect == FX_STROBE) {
-    // Rapid strobe pulse
-    if (now - lastEffectUpdateMs >= (effectStep ? 60 : 100)) {
+  }
+  else if (currentEffect == FX_STROBE) {
+    // Selectable Strobe Mode: Chosen Color, RGB Cycle, Rainbow Cycle, or White
+    static bool strobeState = false;
+    unsigned long pulseTime = strobeState ? 55 : 95; // 55ms ON / 95ms OFF
+
+    if (now - lastEffectUpdateMs >= pulseTime) {
       lastEffectUpdateMs = now;
-      effectStep = !effectStep;
-      if (effectStep) {
-        uint8_t sw = currentBrightness;
-        setRGB1ColorRaw(sw, sw, sw);
-        setRGB2ColorRaw(sw, sw, sw);
+      strobeState = !strobeState;
+
+      if (strobeState) {
+        uint8_t r = 255, g = 255, b = 255;
+        if (currentStrobeMode == STROBE_COLOR) {
+          // Strobes user's selected active color
+          if (baseR == 0 && baseG == 0 && baseB == 0) {
+            r = 255; g = 255; b = 255;
+          } else {
+            r = baseR; g = baseG; b = baseB;
+          }
+        } else if (currentStrobeMode == STROBE_RGB) {
+          // Cycles Red -> Green -> Blue on every pulse
+          strobeColorIndex = (strobeColorIndex + 1) % 3;
+          r = (strobeColorIndex == 0) ? 255 : 0;
+          g = (strobeColorIndex == 1) ? 255 : 0;
+          b = (strobeColorIndex == 2) ? 255 : 0;
+        } else if (currentStrobeMode == STROBE_RAINBOW) {
+          // Cycles vibrant rainbow colors on every pulse
+          strobeColorIndex = (strobeColorIndex + 1) % 7;
+          r = FLASH_PALETTE[strobeColorIndex][0];
+          g = FLASH_PALETTE[strobeColorIndex][1];
+          b = FLASH_PALETTE[strobeColorIndex][2];
+        } else {
+          // STROBE_WHITE
+          r = 255; g = 255; b = 255;
+        }
+
+        uint8_t sr = (uint8_t)round(((uint16_t)r * currentBrightness) / 255.0f);
+        uint8_t sg = (uint8_t)round(((uint16_t)g * currentBrightness) / 255.0f);
+        uint8_t sb = (uint8_t)round(((uint16_t)b * currentBrightness) / 255.0f);
+        setRGB1ColorRaw(sr, sg, sb);
+        setRGB2ColorRaw(sr, sg, sb);
       } else {
         setRGB1ColorRaw(0, 0, 0);
         setRGB2ColorRaw(0, 0, 0);
       }
     }
-  } else if (currentEffect == FX_FADE) {
-    // Smooth 360-degree rainbow crossfade
-    if (now - lastEffectUpdateMs >= 25) {
+  }
+  else if (currentEffect == FX_FADE) {
+    // Ultra-smooth continuous 360-degree rainbow flow at 50 FPS
+    if (now - lastEffectUpdateMs >= 20) {
       lastEffectUpdateMs = now;
-      effectStep = (effectStep + 1) % 360;
+      fadeHue += 0.55f;
+      if (fadeHue >= 360.0f) fadeHue -= 360.0f;
+
       uint8_t r, g, b;
-      hsvToRgb(effectStep, 255, currentBrightness, r, g, b);
+      hsvToRgb((uint16_t)fadeHue, 255, currentBrightness, r, g, b);
+      curR1 = curR2 = r;
+      curG1 = curG2 = g;
+      curB1 = curB2 = b;
       setRGB1ColorRaw(r, g, b);
       setRGB2ColorRaw(r, g, b);
     }
-  } else if (currentEffect == FX_SMOOTH) {
-    // Relaxing soft ambient breathing cycle
-    if (now - lastEffectUpdateMs >= 35) {
+  }
+  else if (currentEffect == FX_SMOOTH) {
+    // Ambient breathing mood flow with smooth sinusoidal intensity curve
+    if (now - lastEffectUpdateMs >= 20) {
       lastEffectUpdateMs = now;
-      effectStep = (effectStep + 1) % 360;
+      smoothAngle += 0.045f;
+      if (smoothAngle >= 6.2831853f) smoothAngle -= 6.2831853f;
+
+      float breath = sin(smoothAngle) * 0.425f + 0.575f; // Smooth pulse from 15% to 100%
+
       uint8_t r, g, b;
-      hsvToRgb(effectStep, 175, currentBrightness, r, g, b);
+      if (baseR == 0 && baseG == 0 && baseB == 0) {
+        float hue = fmod(smoothAngle * 35.0f, 360.0f);
+        hsvToRgb((uint16_t)hue, 180, (uint8_t)round(currentBrightness * breath), r, g, b);
+      } else {
+        r = (uint8_t)round(baseR * breath * currentBrightness / 255.0f);
+        g = (uint8_t)round(baseG * breath * currentBrightness / 255.0f);
+        b = (uint8_t)round(baseB * breath * currentBrightness / 255.0f);
+      }
+      curR1 = curR2 = r;
+      curG1 = curG2 = g;
+      curB1 = curB2 = b;
       setRGB1ColorRaw(r, g, b);
       setRGB2ColorRaw(r, g, b);
     }
@@ -410,6 +558,7 @@ void handleApiStatus() {
     "\"humidity\":%.1f,"
     "\"brightness\":%d,"
     "\"effect\":%d,"
+    "\"strobeMode\":%d,"
     "\"lastIrHex\":\"0x%06lX\","
     "\"lastIrName\":\"%s\","
     "\"s1\":{\"r\":%d,\"g\":%d,\"b\":%d},"
@@ -426,6 +575,7 @@ void handleApiStatus() {
     currentHumidity,
     currentBrightness,
     (int)currentEffect,
+    (int)currentStrobeMode,
     (unsigned long)lastReceivedIrHex,
     lastReceivedIrName.c_str(),
     pinRGB1_Red, pinRGB1_Green, pinRGB1_Blue,
@@ -441,11 +591,21 @@ void handleApiCmd() {
     String val = server.arg("val");
     String stripTarget = server.hasArg("strip") ? server.arg("strip") : "all";
     uint32_t code = 0;
+    bool keepStrobe = (server.hasArg("strobe") && server.arg("strobe") == "1");
 
     auto applyColor = [&](uint8_t r, uint8_t g, uint8_t b) {
-      if (stripTarget == "1") setRGB1Color(r, g, b);
-      else if (stripTarget == "2") setRGB2Color(r, g, b);
-      else setBothRGBColors(r, g, b);
+      baseR = r;
+      baseG = g;
+      baseB = b;
+      if (keepStrobe) {
+        currentStrobeMode = STROBE_COLOR;
+        currentEffect = FX_STROBE;
+      } else {
+        currentEffect = FX_NONE;
+        if (stripTarget == "1") setRGB1Color(r, g, b);
+        else if (stripTarget == "2") setRGB2Color(r, g, b);
+        else setBothRGBColors(r, g, b);
+      }
     };
 
     if (val == "on")            { currentEffect = FX_NONE; code = IR_POWER_ON;  applyColor(255, 255, 255); }
@@ -460,26 +620,48 @@ void handleApiCmd() {
       server.send(200, "application/json", "{\"status\":\"ok\"}");
       return;
     }
-    else if (val == "red")       { currentEffect = FX_NONE; code = IR_RED;       applyColor(255, 0, 0); }
-    else if (val == "green")     { currentEffect = FX_NONE; code = IR_GREEN;     applyColor(0, 255, 0); }
-    else if (val == "blue")      { currentEffect = FX_NONE; code = IR_BLUE;      applyColor(0, 0, 255); }
-    else if (val == "white")     { currentEffect = FX_NONE; code = IR_WHITE;     applyColor(255, 255, 255); }
-    else if (val == "orange")    { currentEffect = FX_NONE; code = IR_ORANGE;    applyColor(255, 80, 0); }
-    else if (val == "pea_green") { currentEffect = FX_NONE; code = IR_PEA_GREEN; applyColor(40, 255, 20); }
-    else if (val == "dark_blue") { currentEffect = FX_NONE; code = IR_DARK_BLUE; applyColor(0, 50, 255); }
-    else if (val == "dark_orange") { currentEffect = FX_NONE; code = IR_DARK_ORANGE; applyColor(255, 35, 0); }
-    else if (val == "cyan")      { currentEffect = FX_NONE; code = IR_CYAN;      applyColor(0, 255, 255); }
-    else if (val == "purple")    { currentEffect = FX_NONE; code = IR_PURPLE;    applyColor(150, 0, 255); }
-    else if (val == "brown" || val == "magenta") { currentEffect = FX_NONE; code = IR_BROWN; applyColor(180, 0, 100); }
-    else if (val == "light_orange" || val == "amber") { currentEffect = FX_NONE; code = IR_LIGHT_ORANGE; applyColor(255, 140, 0); }
-    else if (val == "light_blue" || val == "sky_blue") { currentEffect = FX_NONE; code = IR_LIGHT_BLUE; applyColor(0, 160, 255); }
-    else if (val == "pink")      { currentEffect = FX_NONE; code = IR_PINK;      applyColor(255, 40, 160); }
-    else if (val == "yellow")    { currentEffect = FX_NONE; code = IR_YELLOW;    applyColor(255, 220, 0); }
-    else if (val == "ice_blue")  { currentEffect = FX_NONE; code = IR_SKY_BLUE;  applyColor(50, 220, 255); }
-    else if (val == "flash")     { currentEffect = FX_FLASH; effectStep = 0; code = IR_FLASH; }
-    else if (val == "strobe")    { currentEffect = FX_STROBE; effectStep = 0; code = IR_STROBE; }
-    else if (val == "fade")      { currentEffect = FX_FADE; effectStep = 0; code = IR_FADE; }
-    else if (val == "smooth")    { currentEffect = FX_SMOOTH; effectStep = 0; code = IR_SMOOTH; }
+    else if (val == "red")       { code = IR_RED;       applyColor(255, 0, 0); }
+    else if (val == "green")     { code = IR_GREEN;     applyColor(0, 255, 0); }
+    else if (val == "blue")      { code = IR_BLUE;      applyColor(0, 0, 255); }
+    else if (val == "white")     { code = IR_WHITE;     applyColor(255, 255, 255); }
+    else if (val == "orange")    { code = IR_ORANGE;    applyColor(255, 80, 0); }
+    else if (val == "pea_green") { code = IR_PEA_GREEN; applyColor(40, 255, 20); }
+    else if (val == "dark_blue") { code = IR_DARK_BLUE; applyColor(0, 50, 255); }
+    else if (val == "dark_orange") { code = IR_DARK_ORANGE; applyColor(255, 35, 0); }
+    else if (val == "cyan")      { code = IR_CYAN;      applyColor(0, 255, 255); }
+    else if (val == "purple")    { code = IR_PURPLE;    applyColor(150, 0, 255); }
+    else if (val == "brown" || val == "magenta") { code = IR_BROWN; applyColor(180, 0, 100); }
+    else if (val == "light_orange" || val == "amber") { code = IR_LIGHT_ORANGE; applyColor(255, 140, 0); }
+    else if (val == "light_blue" || val == "sky_blue") { code = IR_LIGHT_BLUE; applyColor(0, 160, 255); }
+    else if (val == "pink")      { code = IR_PINK;      applyColor(255, 40, 160); }
+    else if (val == "yellow")    { code = IR_YELLOW;    applyColor(255, 220, 0); }
+    else if (val == "ice_blue")  { code = IR_SKY_BLUE;  applyColor(50, 220, 255); }
+    else if (val == "flash")     { currentEffect = FX_FLASH; flashStepStartMs = millis(); code = IR_FLASH; }
+    else if (val == "strobe")    {
+      currentEffect = FX_STROBE;
+      code = IR_STROBE;
+      if (server.hasArg("mode")) {
+        String m = server.arg("mode");
+        if (m == "rgb") currentStrobeMode = STROBE_RGB;
+        else if (m == "rainbow") currentStrobeMode = STROBE_RAINBOW;
+        else if (m == "white") currentStrobeMode = STROBE_WHITE;
+        else currentStrobeMode = STROBE_COLOR;
+      }
+    }
+    else if (val == "strobe_mode") {
+      currentEffect = FX_STROBE;
+      if (server.hasArg("mode")) {
+        String m = server.arg("mode");
+        if (m == "rgb") currentStrobeMode = STROBE_RGB;
+        else if (m == "rainbow") currentStrobeMode = STROBE_RAINBOW;
+        else if (m == "white") currentStrobeMode = STROBE_WHITE;
+        else currentStrobeMode = STROBE_COLOR;
+      }
+      server.send(200, "application/json", "{\"status\":\"ok\"}");
+      return;
+    }
+    else if (val == "fade")      { currentEffect = FX_FADE; fadeHue = 0.0f; code = IR_FADE; }
+    else if (val == "smooth")    { currentEffect = FX_SMOOTH; smoothAngle = 0.0f; code = IR_SMOOTH; }
 
     if (code != 0) {
       sendExternalIR(code);
@@ -589,6 +771,20 @@ void handlePhysicalIRCommand(uint32_t val) {
   lastReceivedIrHex = val;
   Serial.printf("[REMOTE] Received IR Hex: 0x%06lX\n", (unsigned long)val);
 
+  auto setLightOrStrobe = [&](uint8_t r, uint8_t g, uint8_t b, const char* name) {
+    if (currentEffect == FX_STROBE) {
+      baseR = r; baseG = g; baseB = b;
+      currentStrobeMode = STROBE_COLOR;
+      lastReceivedIrName = String("STROBE (") + name + ")";
+      Serial.printf("[REMOTE] -> %s\n", lastReceivedIrName.c_str());
+    } else {
+      currentEffect = FX_NONE;
+      setBothRGBColors(r, g, b);
+      lastReceivedIrName = name;
+      Serial.printf("[REMOTE] -> %s\n", name);
+    }
+  };
+
   switch (val) {
     // Row 1
     case IR_POWER_ON:
@@ -613,132 +809,60 @@ void handlePhysicalIRCommand(uint32_t val) {
       break;
 
     // Row 2
-    case IR_RED:
-      currentEffect = FX_NONE;
-      setBothRGBColors(255, 0, 0);
-      lastReceivedIrName = "RED";
-      Serial.println("[REMOTE] -> RED");
-      break;
-    case IR_GREEN:
-      currentEffect = FX_NONE;
-      setBothRGBColors(0, 255, 0);
-      lastReceivedIrName = "GREEN";
-      Serial.println("[REMOTE] -> GREEN");
-      break;
-    case IR_BLUE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(0, 0, 255);
-      lastReceivedIrName = "BLUE";
-      Serial.println("[REMOTE] -> BLUE");
-      break;
-    case IR_WHITE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(255, 255, 255);
-      lastReceivedIrName = "WHITE";
-      Serial.println("[REMOTE] -> WHITE");
-      break;
+    case IR_RED:        setLightOrStrobe(255, 0, 0, "RED"); break;
+    case IR_GREEN:      setLightOrStrobe(0, 255, 0, "GREEN"); break;
+    case IR_BLUE:       setLightOrStrobe(0, 0, 255, "BLUE"); break;
+    case IR_WHITE:      setLightOrStrobe(255, 255, 255, "WHITE"); break;
 
     // Row 3
-    case IR_ORANGE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(255, 80, 0);
-      lastReceivedIrName = "ORANGE";
-      Serial.println("[REMOTE] -> ORANGE");
-      break;
-    case IR_PEA_GREEN:
-      currentEffect = FX_NONE;
-      setBothRGBColors(40, 255, 20);
-      lastReceivedIrName = "PEA GREEN";
-      Serial.println("[REMOTE] -> PEA GREEN");
-      break;
-    case IR_DARK_BLUE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(0, 50, 255);
-      lastReceivedIrName = "DARK BLUE";
-      Serial.println("[REMOTE] -> DARK BLUE");
-      break;
+    case IR_ORANGE:     setLightOrStrobe(255, 80, 0, "ORANGE"); break;
+    case IR_PEA_GREEN:  setLightOrStrobe(40, 255, 20, "PEA GREEN"); break;
+    case IR_DARK_BLUE:  setLightOrStrobe(0, 50, 255, "DARK BLUE"); break;
     case IR_FLASH:
       currentEffect = FX_FLASH;
-      effectStep = 0;
-      lastReceivedIrName = "FLASH (7-Color)";
-      Serial.println("[REMOTE] -> Effect: FLASH (7-color jump)");
+      flashStepStartMs = millis();
+      lastReceivedIrName = "FLASH (7-Color Flow)";
+      Serial.println("[REMOTE] -> Effect: FLASH (Smooth 7-color flow)");
       break;
 
     // Row 4
-    case IR_DARK_ORANGE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(255, 35, 0);
-      lastReceivedIrName = "DARK ORANGE";
-      Serial.println("[REMOTE] -> DARK ORANGE");
-      break;
-    case IR_CYAN:
-      currentEffect = FX_NONE;
-      setBothRGBColors(0, 255, 255);
-      lastReceivedIrName = "CYAN";
-      Serial.println("[REMOTE] -> CYAN");
-      break;
-    case IR_BROWN:
-      currentEffect = FX_NONE;
-      setBothRGBColors(180, 0, 100);
-      lastReceivedIrName = "MAGENTA / ROSE";
-      Serial.println("[REMOTE] -> MAGENTA/ROSE");
-      break;
+    case IR_DARK_ORANGE: setLightOrStrobe(255, 35, 0, "DARK ORANGE"); break;
+    case IR_CYAN:        setLightOrStrobe(0, 255, 255, "CYAN"); break;
+    case IR_BROWN:       setLightOrStrobe(180, 0, 100, "MAGENTA/ROSE"); break;
     case IR_STROBE:
-      currentEffect = FX_STROBE;
-      effectStep = 0;
-      lastReceivedIrName = "STROBE";
-      Serial.println("[REMOTE] -> Effect: STROBE (White pulse)");
+      if (currentEffect == FX_STROBE) {
+        currentStrobeMode = (StrobeMode)((currentStrobeMode + 1) % 4);
+      } else {
+        currentEffect = FX_STROBE;
+      }
+      switch (currentStrobeMode) {
+        case STROBE_COLOR:   lastReceivedIrName = "STROBE (Color)"; break;
+        case STROBE_RGB:     lastReceivedIrName = "STROBE (RGB Cycle)"; break;
+        case STROBE_RAINBOW: lastReceivedIrName = "STROBE (Rainbow)"; break;
+        case STROBE_WHITE:   lastReceivedIrName = "STROBE (White Pulse)"; break;
+      }
+      Serial.printf("[REMOTE] -> %s\n", lastReceivedIrName.c_str());
       break;
 
     // Row 5
-    case IR_LIGHT_ORANGE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(255, 140, 0);
-      lastReceivedIrName = "AMBER";
-      Serial.println("[REMOTE] -> AMBER / WARM YELLOW");
-      break;
-    case IR_LIGHT_BLUE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(0, 160, 255);
-      lastReceivedIrName = "SKY BLUE";
-      Serial.println("[REMOTE] -> SKY BLUE");
-      break;
-    case IR_PINK:
-      currentEffect = FX_NONE;
-      setBothRGBColors(255, 40, 160);
-      lastReceivedIrName = "PINK";
-      Serial.println("[REMOTE] -> PINK");
-      break;
+    case IR_LIGHT_ORANGE: setLightOrStrobe(255, 140, 0, "AMBER"); break;
+    case IR_LIGHT_BLUE:   setLightOrStrobe(0, 160, 255, "SKY BLUE"); break;
+    case IR_PINK:         setLightOrStrobe(255, 40, 160, "PINK"); break;
     case IR_FADE:
       currentEffect = FX_FADE;
-      effectStep = 0;
-      lastReceivedIrName = "FADE (Rainbow)";
-      Serial.println("[REMOTE] -> Effect: FADE (Rainbow crossfade)");
+      fadeHue = 0.0f;
+      lastReceivedIrName = "FADE (Rainbow Flow)";
+      Serial.println("[REMOTE] -> Effect: FADE (Rainbow wave)");
       break;
 
     // Row 6
-    case IR_YELLOW:
-      currentEffect = FX_NONE;
-      setBothRGBColors(255, 220, 0);
-      lastReceivedIrName = "YELLOW";
-      Serial.println("[REMOTE] -> YELLOW");
-      break;
-    case IR_SKY_BLUE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(50, 220, 255);
-      lastReceivedIrName = "ICE BLUE";
-      Serial.println("[REMOTE] -> ICE BLUE");
-      break;
-    case IR_PURPLE:
-      currentEffect = FX_NONE;
-      setBothRGBColors(150, 0, 255);
-      lastReceivedIrName = "PURPLE";
-      Serial.println("[REMOTE] -> PURPLE");
-      break;
+    case IR_YELLOW:       setLightOrStrobe(255, 220, 0, "YELLOW"); break;
+    case IR_SKY_BLUE:     setLightOrStrobe(50, 220, 255, "ICE BLUE"); break;
+    case IR_PURPLE:       setLightOrStrobe(150, 0, 255, "PURPLE"); break;
     case IR_SMOOTH:
       currentEffect = FX_SMOOTH;
-      effectStep = 0;
-      lastReceivedIrName = "SMOOTH (Ambient)";
+      smoothAngle = 0.0f;
+      lastReceivedIrName = "SMOOTH (Ambient Breath)";
       Serial.println("[REMOTE] -> Effect: SMOOTH (Ambient breath)");
       break;
 
@@ -902,8 +1026,12 @@ void loop() {
     }
   }
 
-  // 4. Update Dynamic Lighting Effects (Flash, Strobe, Fade, Smooth)
-  updateEffects();
+  // 4. Update Dynamic Lighting Effects & Smooth Color Transitions
+  if (currentEffect != FX_NONE) {
+    updateEffects();
+  } else {
+    updateColorTransitions();
+  }
 
   // 5. Physical IR Remote Decoding
   if (irrecv.decode(&irResults)) {
