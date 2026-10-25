@@ -193,12 +193,35 @@ The ESP32 runs a lightweight REST API that you can also integrate into Home Assi
 
 ---
 
-## 7. Project File Structure
+## 7. Android Companion App (Git Submodule)
+
+A native Android app built with **Jetpack Compose (Material 3)** and **Kotlin** with a minimum requirement of **Android 8.0 (API Level 26)** is integrated as a submodule in `android_app/` ([Repository Link](https://github.com/isharax9/esp32-smart-pomodoro-android)).
+
+### Key App Features
+- **Real-Time Countdown Dial:** Live synchronized timer with focus/break states and haptic background notifications.
+- **Desk Telemetry:** Real-time chair presence (At Desk vs Away), ultrasonic distance gauge, and DHT11 room climate readings.
+- **Virtual 24-Key RGB Controller:** Color swatches, brightness slider (10%–100%), dual-strip targeting, and dynamic lighting effects (Flash, Strobe, Fade, Smooth).
+- **Fast Wi-Fi Connection:** Connects over the ESP32's SoftAP hotspot (`192.168.4.1`) or local network mDNS (`pomodoro.local`) with zero firmware modifications.
+
+### Cloning with Submodules
+To clone this project along with the Android app:
+```bash
+git clone --recurse-submodules https://github.com/isharax9/Esp32.git
+```
+Or if already cloned:
+```bash
+git submodule update --init --recursive
+```
+
+---
+
+## 8. Project File Structure
 
 ```text
 Esp32/
 ├── platformio.ini                     # Dual-environment PlatformIO config
 ├── README.md                          # Full project documentation & wiring
+├── android_app/                       # [Submodule] Native Jetpack Compose Android App (minSdk 26)
 ├── esp32_smart_pomodoro/
 │   ├── esp32_smart_pomodoro.ino       # Core firmware: Pomodoro + Wi-Fi + IR + Presence
 │   ├── config.h                       # Wi-Fi credentials, pinouts, timing constants, IR codes
