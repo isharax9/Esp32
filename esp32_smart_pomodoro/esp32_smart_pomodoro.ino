@@ -86,23 +86,44 @@ float getSmoothedDistanceCM() {
 // ==========================================
 void setRGB1Color(uint8_t r, uint8_t g, uint8_t b) {
 #if ENABLE_DIRECT_RGB
-  digitalWrite(PIN_RGB1_RED,   r ? HIGH : LOW);
-  digitalWrite(PIN_RGB1_GREEN, g ? HIGH : LOW);
-  digitalWrite(PIN_RGB1_BLUE,  b ? HIGH : LOW);
+  #if RGB_COMMON_ANODE
+    digitalWrite(PIN_RGB1_RED,   r ? LOW : HIGH);
+    digitalWrite(PIN_RGB1_GREEN, g ? LOW : HIGH);
+    digitalWrite(PIN_RGB1_BLUE,  b ? LOW : HIGH);
+  #else
+    digitalWrite(PIN_RGB1_RED,   r ? HIGH : LOW);
+    digitalWrite(PIN_RGB1_GREEN, g ? HIGH : LOW);
+    digitalWrite(PIN_RGB1_BLUE,  b ? HIGH : LOW);
+  #endif
 #endif
 }
 
 void setRGB2Color(uint8_t r, uint8_t g, uint8_t b) {
 #if ENABLE_DIRECT_RGB
-  digitalWrite(PIN_RGB2_RED,   r ? HIGH : LOW);
-  digitalWrite(PIN_RGB2_GREEN, g ? HIGH : LOW);
-  digitalWrite(PIN_RGB2_BLUE,  b ? HIGH : LOW);
+  #if RGB_COMMON_ANODE
+    digitalWrite(PIN_RGB2_RED,   r ? LOW : HIGH);
+    digitalWrite(PIN_RGB2_GREEN, g ? LOW : HIGH);
+    digitalWrite(PIN_RGB2_BLUE,  b ? LOW : HIGH);
+  #else
+    digitalWrite(PIN_RGB2_RED,   r ? HIGH : LOW);
+    digitalWrite(PIN_RGB2_GREEN, g ? HIGH : LOW);
+    digitalWrite(PIN_RGB2_BLUE,  b ? HIGH : LOW);
+  #endif
 #endif
 }
 
 void setBothRGBColors(uint8_t r, uint8_t g, uint8_t b) {
   setRGB1Color(r, g, b);
   setRGB2Color(r, g, b);
+}
+
+// Safely send external IR codes with receiver protection
+void sendExternalIR(uint32_t code) {
+  if (code == 0) return;
+  irrecv.disableIRIn();
+  irsend.sendNEC(code, 32);
+  delay(60); // Allow optical pulse burst to dissipate
+  irrecv.enableIRIn();
 }
 
 // ==========================================
@@ -115,8 +136,8 @@ void startWorkSession() {
   phaseDurationMs = DEFAULT_WORK_DURATION_MS;
   phaseStartTime = millis();
   remainingMs = phaseDurationMs;
-  irsend.sendNEC(IR_RED, 32);
   setBothRGBColors(255, 0, 0);
+  sendExternalIR(IR_RED);
   Serial.println("[POMODORO] Focus Session Started -> Light: RED (Both Strips)");
 }
 
@@ -128,8 +149,8 @@ void startBreakSession() {
   phaseStartTime = millis();
   remainingMs = phaseDurationMs;
   cyclesCompleted++;
-  irsend.sendNEC(IR_GREEN, 32);
   setBothRGBColors(0, 255, 0);
+  sendExternalIR(IR_GREEN);
   Serial.printf("[POMODORO] Break Session Started (Cycle #%lu) -> Light: GREEN (Both Strips)\n", cyclesCompleted);
 }
 
@@ -158,11 +179,11 @@ void resumeSession() {
 
   // Restore appropriate color on resume
   if (currentState == STATE_WORK) {
-    irsend.sendNEC(IR_RED, 32);
     setBothRGBColors(255, 0, 0);
+    sendExternalIR(IR_RED);
   } else if (currentState == STATE_BREAK) {
-    irsend.sendNEC(IR_GREEN, 32);
     setBothRGBColors(0, 255, 0);
+    sendExternalIR(IR_GREEN);
   }
   Serial.println("[POMODORO] Session Resumed");
 }
@@ -173,8 +194,8 @@ void resetPomodoro() {
   autoPausedByAbsence = false;
   phaseDurationMs = DEFAULT_WORK_DURATION_MS;
   remainingMs = DEFAULT_WORK_DURATION_MS;
-  irsend.sendNEC(IR_WHITE, 32);
   setBothRGBColors(255, 255, 255);
+  sendExternalIR(IR_WHITE);
   Serial.println("[POMODORO] Reset to IDLE -> Light: WHITE (Both Strips)");
 }
 
@@ -265,8 +286,8 @@ void handleApiCmd() {
     else if (val == "smooth")    { code = IR_SMOOTH; }
 
     if (code != 0) {
-      irsend.sendNEC(code, 32);
-      Serial.printf("[IR] Sent 0x%06X (%s) [Strip: %s]\n", code, val.c_str(), stripTarget.c_str());
+      sendExternalIR(code);
+      Serial.printf("[IR] Sent 0x%06lX (%s) [Strip: %s]\n", (unsigned long)code, val.c_str(), stripTarget.c_str());
       server.send(200, "application/json", "{\"status\":\"ok\"}");
       return;
     }
@@ -308,10 +329,11 @@ void handleApiSettings() {
 // Physical 24-Key IR Remote Handler
 // ==========================================
 void handlePhysicalIRCommand(uint32_t val) {
-  Serial.printf("[REMOTE] Received IR Hex: 0x%06lX\n", (unsigned long)val);
+  static unsigned long lastRemoteTime = 0;
+  if (millis() - lastRemoteTime < 200) return; // Debounce rapid repeats
+  lastRemoteTime = millis();
 
-  // Relay command to external 5V USB dongle via IR LED
-  irsend.sendNEC(val, 32);
+  Serial.printf("[REMOTE] Received IR Hex: 0x%06lX\n", (unsigned long)val);
 
   switch (val) {
     // Row 1
@@ -342,6 +364,8 @@ void handlePhysicalIRCommand(uint32_t val) {
       break;
     case IR_WHITE:
       resetPomodoro();
+      setBothRGBColors(255, 255, 255);
+      Serial.println("[REMOTE] -> WHITE");
       break;
 
     // Row 3
@@ -418,8 +442,6 @@ void handlePhysicalIRCommand(uint32_t val) {
 
     default:
       Serial.printf("[REMOTE] Unmapped key: 0x%06lX\n", (unsigned long)val);
-      // Fallback toggle for any other button
-      setBothRGBColors(255, 255, 255);
       break;
   }
 }
@@ -448,7 +470,7 @@ void setup() {
   pinMode(PIN_RGB2_GREEN, OUTPUT);
   pinMode(PIN_RGB2_BLUE, OUTPUT);
 
-  setBothRGBColors(255, 255, 255); // Default both strips to white
+  setBothRGBColors(0, 0, 0); // Start with LEDs OFF so user can clearly see button responses
 #endif
 
   // Initialize IR Transmitter & Receiver
@@ -583,5 +605,26 @@ void loop() {
       handlePhysicalIRCommand(val);
     }
     irrecv.resume();
+  }
+
+  // 5. Serial Console Commands for Rapid Pin Testing
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == 'r' || c == 'R') {
+      Serial.println("[SERIAL] Set RED");
+      setBothRGBColors(255, 0, 0);
+    } else if (c == 'g' || c == 'G') {
+      Serial.println("[SERIAL] Set GREEN");
+      setBothRGBColors(0, 255, 0);
+    } else if (c == 'b' || c == 'B') {
+      Serial.println("[SERIAL] Set BLUE");
+      setBothRGBColors(0, 0, 255);
+    } else if (c == 'w' || c == 'W') {
+      Serial.println("[SERIAL] Set WHITE");
+      setBothRGBColors(255, 255, 255);
+    } else if (c == 'o' || c == 'O') {
+      Serial.println("[SERIAL] Set OFF");
+      setBothRGBColors(0, 0, 0);
+    }
   }
 }

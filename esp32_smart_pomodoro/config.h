@@ -23,18 +23,21 @@ const uint8_t  PIN_ECHO     = 18;  // HC-SR04 Ultrasonic Echo (use voltage divid
 const uint8_t  PIN_DHT      = 27;  // DHT11 Data pin (with 10k pull-up if bare sensor)
 #define DHTTYPE DHT11              // DHT 11 or DHT 22
 
-// Optional: Direct 4-Pin RGB LED pins for 2 Strips (Wokwi simulation + direct hardware wiring)
+// Optional: Direct 4-Pin RGB LED pins for 2 Strips (Calibrated to match hardware)
 #define ENABLE_DIRECT_RGB true
 
-// RGB Strip 1
-const uint8_t PIN_RGB1_RED   = 23;  // Red pin via 220R
-const uint8_t PIN_RGB1_GREEN = 22;  // Green pin via 220R
-const uint8_t PIN_RGB1_BLUE  = 21;  // Blue pin via 220R
+// Set to true for Common Anode (longest pin to 3.3V/5V), false for Common Cathode (longest pin to GND)
+#define RGB_COMMON_ANODE true
 
-// RGB Strip 2
-const uint8_t PIN_RGB2_RED   = 19;  // Red pin via 220R
-const uint8_t PIN_RGB2_GREEN = 17;  // Green pin via 220R
-const uint8_t PIN_RGB2_BLUE  = 16;  // Blue pin via 220R
+// RGB Strip 1: Calibrated based on physical test
+const uint8_t PIN_RGB1_RED   = 22;  // Red pin
+const uint8_t PIN_RGB1_GREEN = 21;  // Green pin
+const uint8_t PIN_RGB1_BLUE  = 23;  // Blue pin
+
+// RGB Strip 2: Calibrated matching Strip 1
+const uint8_t PIN_RGB2_RED   = 17;  // Red pin
+const uint8_t PIN_RGB2_GREEN = 16;  // Green pin
+const uint8_t PIN_RGB2_BLUE  = 19;  // Blue pin
 
 // ==========================================
 // Complete 24-Key RGB IR Remote Codes (NEC 32-bit)
