@@ -37,27 +37,42 @@ const uint8_t PIN_RGB2_GREEN = 17;  // Green pin via 220R
 const uint8_t PIN_RGB2_BLUE  = 16;  // Blue pin via 220R
 
 // ==========================================
-// Default 24-Key RGB IR Remote Codes (NEC 32-bit)
+// Complete 24-Key RGB IR Remote Codes (NEC 32-bit)
 // ==========================================
-// If your remote uses different codes, run the ir_sniffer sketch to record them.
-const uint32_t IR_POWER_ON   = 0xF7C03F;
-const uint32_t IR_POWER_OFF  = 0xF740BF;
+// Row 1
 const uint32_t IR_BRIGHT_UP  = 0xF700FF;
 const uint32_t IR_BRIGHT_DN  = 0xF7807F;
+const uint32_t IR_POWER_OFF  = 0xF740BF;
+const uint32_t IR_POWER_ON   = 0xF7C03F;
 
+// Row 2
 const uint32_t IR_RED        = 0xF720DF;
 const uint32_t IR_GREEN      = 0xF7A05F;
 const uint32_t IR_BLUE       = 0xF7609F;
 const uint32_t IR_WHITE      = 0xF7E01F;
 
+// Row 3
 const uint32_t IR_ORANGE     = 0xF710EF;
-const uint32_t IR_CYAN       = 0xF7B04F;
-const uint32_t IR_PURPLE     = 0xF7708F;
-const uint32_t IR_YELLOW     = 0xF728D7;
-const uint32_t IR_PINK       = 0xF748B7;
+const uint32_t IR_PEA_GREEN  = 0xF7906F;
+const uint32_t IR_DARK_BLUE  = 0xF750AF;
 const uint32_t IR_FLASH      = 0xF7D02F;
+
+// Row 4
+const uint32_t IR_DARK_ORANGE= 0xF730CF;
+const uint32_t IR_CYAN       = 0xF7B04F;
+const uint32_t IR_BROWN      = 0xF7708F;
 const uint32_t IR_STROBE     = 0xF7F00F;
+
+// Row 5
+const uint32_t IR_LIGHT_ORANGE=0xF708F7;
+const uint32_t IR_LIGHT_BLUE = 0xF78877;
+const uint32_t IR_PINK       = 0xF748B7;
 const uint32_t IR_FADE       = 0xF7C837;
+
+// Row 6
+const uint32_t IR_YELLOW     = 0xF728D7;
+const uint32_t IR_SKY_BLUE   = 0xF7A857;
+const uint32_t IR_PURPLE     = 0xF76897;
 const uint32_t IR_SMOOTH     = 0xF7E817;
 
 // ==========================================

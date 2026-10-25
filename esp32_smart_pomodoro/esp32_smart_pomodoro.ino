@@ -310,8 +310,13 @@ void handleApiSettings() {
 void handlePhysicalIRCommand(uint32_t val) {
   Serial.printf("[REMOTE] Received IR Hex: 0x%06lX\n", (unsigned long)val);
 
+  // Relay command to external 5V USB dongle via IR LED
+  irsend.sendNEC(val, 32);
+
   switch (val) {
+    // Row 1
     case IR_POWER_ON:
+    case IR_BRIGHT_UP:
       setBothRGBColors(255, 255, 255);
       Serial.println("[REMOTE] -> Lights ON (White)");
       break;
@@ -319,41 +324,102 @@ void handlePhysicalIRCommand(uint32_t val) {
       setBothRGBColors(0, 0, 0);
       Serial.println("[REMOTE] -> Lights OFF");
       break;
+    case IR_BRIGHT_DN:
+      setBothRGBColors(120, 120, 120);
+      Serial.println("[REMOTE] -> Dim White");
+      break;
+
+    // Row 2
     case IR_RED:
       startWorkSession();
       break;
     case IR_GREEN:
       startBreakSession();
       break;
-    case IR_WHITE:
-      resetPomodoro();
-      break;
     case IR_BLUE:
       setBothRGBColors(0, 0, 255);
       Serial.println("[REMOTE] -> BLUE");
       break;
+    case IR_WHITE:
+      resetPomodoro();
+      break;
+
+    // Row 3
     case IR_ORANGE:
       setBothRGBColors(255, 120, 0);
       Serial.println("[REMOTE] -> ORANGE");
+      break;
+    case IR_PEA_GREEN:
+      setBothRGBColors(100, 255, 50);
+      Serial.println("[REMOTE] -> PEA GREEN");
+      break;
+    case IR_DARK_BLUE:
+      setBothRGBColors(0, 0, 180);
+      Serial.println("[REMOTE] -> DARK BLUE");
+      break;
+    case IR_FLASH:
+      setBothRGBColors(255, 0, 120);
+      Serial.println("[REMOTE] -> FLASH");
+      break;
+
+    // Row 4
+    case IR_DARK_ORANGE:
+      setBothRGBColors(255, 60, 0);
+      Serial.println("[REMOTE] -> DARK ORANGE");
       break;
     case IR_CYAN:
       setBothRGBColors(0, 255, 255);
       Serial.println("[REMOTE] -> CYAN");
       break;
-    case IR_PURPLE:
-      setBothRGBColors(255, 0, 255);
-      Serial.println("[REMOTE] -> PURPLE");
+    case IR_BROWN:
+      setBothRGBColors(180, 0, 180);
+      Serial.println("[REMOTE] -> PURPLE/BROWN");
       break;
-    case IR_YELLOW:
-      setBothRGBColors(255, 255, 0);
-      Serial.println("[REMOTE] -> YELLOW");
+    case IR_STROBE:
+      setBothRGBColors(255, 255, 255);
+      Serial.println("[REMOTE] -> STROBE / WHITE");
+      break;
+
+    // Row 5
+    case IR_LIGHT_ORANGE:
+      setBothRGBColors(255, 180, 0);
+      Serial.println("[REMOTE] -> WARM YELLOW");
+      break;
+    case IR_LIGHT_BLUE:
+      setBothRGBColors(100, 200, 255);
+      Serial.println("[REMOTE] -> SKY BLUE");
       break;
     case IR_PINK:
       setBothRGBColors(255, 105, 180);
       Serial.println("[REMOTE] -> PINK");
       break;
+    case IR_FADE:
+      setBothRGBColors(150, 0, 255);
+      Serial.println("[REMOTE] -> FADE / VIOLET");
+      break;
+
+    // Row 6
+    case IR_YELLOW:
+      setBothRGBColors(255, 255, 0);
+      Serial.println("[REMOTE] -> YELLOW");
+      break;
+    case IR_SKY_BLUE:
+      setBothRGBColors(120, 220, 255);
+      Serial.println("[REMOTE] -> ICE BLUE");
+      break;
+    case IR_PURPLE:
+      setBothRGBColors(200, 0, 255);
+      Serial.println("[REMOTE] -> PURPLE");
+      break;
+    case IR_SMOOTH:
+      setBothRGBColors(0, 255, 150);
+      Serial.println("[REMOTE] -> SMOOTH / TEAL");
+      break;
+
     default:
-      Serial.printf("[REMOTE] Pressed key: 0x%06lX\n", (unsigned long)val);
+      Serial.printf("[REMOTE] Unmapped key: 0x%06lX\n", (unsigned long)val);
+      // Fallback toggle for any other button
+      setBothRGBColors(255, 255, 255);
       break;
   }
 }
