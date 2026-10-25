@@ -65,18 +65,25 @@ decode_results irResults;
 DHT dht(PIN_DHT, DHTTYPE);
 WebServer server(80);
 
+// Live Telemetry for Physical Remote Sniffing
+uint32_t lastReceivedIrHex = 0;
+String lastReceivedIrName  = "None";
+
 // ==========================================
 // Ultrasonic Distance Measurement
 // ==========================================
 float measureDistanceCM() {
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+
   digitalWrite(PIN_TRIG, LOW);
-  delayMicroseconds(2);
+  delayMicroseconds(4);
   digitalWrite(PIN_TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(PIN_TRIG, LOW);
 
-  // 25ms timeout corresponds to approx 4.3 meters
-  long duration = pulseIn(PIN_ECHO, HIGH, 25000);
+  // 30ms timeout corresponds to approx 5.1 meters
+  long duration = pulseIn(PIN_ECHO, HIGH, 30000);
   if (duration == 0) return 999.0f;
 
   float distance = (duration * 0.0343f) / 2.0f;
@@ -89,7 +96,9 @@ float getSmoothedDistanceCM() {
   float raw = measureDistanceCM();
   if (raw > 400.0f) raw = 999.0f;
 
-  if (runningAvg >= 900.0f) {
+  if (raw >= 900.0f) {
+    runningAvg = (runningAvg * 0.7f) + (raw * 0.3f);
+  } else if (runningAvg >= 900.0f) {
     runningAvg = raw;
   } else {
     runningAvg = (runningAvg * 0.6f) + (raw * 0.4f);
@@ -387,7 +396,7 @@ void handleApiStatus() {
   if (currentState == STATE_WORK) stateStr = "WORK";
   else if (currentState == STATE_BREAK) stateStr = "BREAK";
 
-  char jsonBuf[420];
+  char jsonBuf[512];
   snprintf(jsonBuf, sizeof(jsonBuf),
     "{\"state\":\"%s\","
     "\"isPaused\":%s,"
@@ -401,6 +410,8 @@ void handleApiStatus() {
     "\"humidity\":%.1f,"
     "\"brightness\":%d,"
     "\"effect\":%d,"
+    "\"lastIrHex\":\"0x%06lX\","
+    "\"lastIrName\":\"%s\","
     "\"s1\":{\"r\":%d,\"g\":%d,\"b\":%d},"
     "\"s2\":{\"r\":%d,\"g\":%d,\"b\":%d}}",
     stateStr.c_str(),
@@ -415,6 +426,8 @@ void handleApiStatus() {
     currentHumidity,
     currentBrightness,
     (int)currentEffect,
+    (unsigned long)lastReceivedIrHex,
+    lastReceivedIrName.c_str(),
     pinRGB1_Red, pinRGB1_Green, pinRGB1_Blue,
     pinRGB2_Red, pinRGB2_Green, pinRGB2_Blue
   );
@@ -521,16 +534,8 @@ void handleApiCalibrate() {
       if (strip == "1") { setRGB1ColorRaw(0, 0, 255); setRGB2ColorRaw(0, 0, 0); }
       else if (strip == "2") { setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(0, 0, 255); }
       else { setBothRGBColors(0, 0, 255); }
-    } else if (test == "d5") {
-      pinMode(5, OUTPUT);
-      writeRGBPin(5, 255);
-    } else if (test == "d18") {
-      pinMode(18, OUTPUT);
-      writeRGBPin(18, 255);
     } else if (test == "off") {
       setBothRGBColors(0, 0, 0);
-      writeRGBPin(5, 0);
-      writeRGBPin(18, 0);
     }
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "application/json", "{\"status\":\"ok\"}");
@@ -578,9 +583,10 @@ void handlePhysicalIRCommand(uint32_t val) {
   if (millis() - lastIrTxTimestamp < 400) return;
 
   static unsigned long lastRemoteTime = 0;
-  if (millis() - lastRemoteTime < 200) return; // Debounce rapid repeats
+  if (millis() - lastRemoteTime < 150) return; // Debounce rapid repeats
   lastRemoteTime = millis();
 
+  lastReceivedIrHex = val;
   Serial.printf("[REMOTE] Received IR Hex: 0x%06lX\n", (unsigned long)val);
 
   switch (val) {
@@ -588,35 +594,47 @@ void handlePhysicalIRCommand(uint32_t val) {
     case IR_POWER_ON:
       currentEffect = FX_NONE;
       setBothRGBColors(255, 255, 255);
+      lastReceivedIrName = "POWER ON (White)";
       Serial.println("[REMOTE] -> Lights ON (White)");
       break;
     case IR_POWER_OFF:
       currentEffect = FX_NONE;
       setBothRGBColors(0, 0, 0);
+      lastReceivedIrName = "POWER OFF";
       Serial.println("[REMOTE] -> Lights OFF");
       break;
     case IR_BRIGHT_UP:
       updateBrightness(+1);
+      lastReceivedIrName = "BRIGHTNESS UP";
       break;
     case IR_BRIGHT_DN:
       updateBrightness(-1);
+      lastReceivedIrName = "BRIGHTNESS DOWN";
       break;
 
     // Row 2
     case IR_RED:
-      startWorkSession();
+      currentEffect = FX_NONE;
+      setBothRGBColors(255, 0, 0);
+      lastReceivedIrName = "RED";
+      Serial.println("[REMOTE] -> RED");
       break;
     case IR_GREEN:
-      startBreakSession();
+      currentEffect = FX_NONE;
+      setBothRGBColors(0, 255, 0);
+      lastReceivedIrName = "GREEN";
+      Serial.println("[REMOTE] -> GREEN");
       break;
     case IR_BLUE:
       currentEffect = FX_NONE;
       setBothRGBColors(0, 0, 255);
+      lastReceivedIrName = "BLUE";
       Serial.println("[REMOTE] -> BLUE");
       break;
     case IR_WHITE:
-      resetPomodoro();
+      currentEffect = FX_NONE;
       setBothRGBColors(255, 255, 255);
+      lastReceivedIrName = "WHITE";
       Serial.println("[REMOTE] -> WHITE");
       break;
 
@@ -624,21 +642,25 @@ void handlePhysicalIRCommand(uint32_t val) {
     case IR_ORANGE:
       currentEffect = FX_NONE;
       setBothRGBColors(255, 80, 0);
+      lastReceivedIrName = "ORANGE";
       Serial.println("[REMOTE] -> ORANGE");
       break;
     case IR_PEA_GREEN:
       currentEffect = FX_NONE;
       setBothRGBColors(40, 255, 20);
+      lastReceivedIrName = "PEA GREEN";
       Serial.println("[REMOTE] -> PEA GREEN");
       break;
     case IR_DARK_BLUE:
       currentEffect = FX_NONE;
       setBothRGBColors(0, 50, 255);
+      lastReceivedIrName = "DARK BLUE";
       Serial.println("[REMOTE] -> DARK BLUE");
       break;
     case IR_FLASH:
       currentEffect = FX_FLASH;
       effectStep = 0;
+      lastReceivedIrName = "FLASH (7-Color)";
       Serial.println("[REMOTE] -> Effect: FLASH (7-color jump)");
       break;
 
@@ -646,21 +668,25 @@ void handlePhysicalIRCommand(uint32_t val) {
     case IR_DARK_ORANGE:
       currentEffect = FX_NONE;
       setBothRGBColors(255, 35, 0);
+      lastReceivedIrName = "DARK ORANGE";
       Serial.println("[REMOTE] -> DARK ORANGE");
       break;
     case IR_CYAN:
       currentEffect = FX_NONE;
       setBothRGBColors(0, 255, 255);
+      lastReceivedIrName = "CYAN";
       Serial.println("[REMOTE] -> CYAN");
       break;
     case IR_BROWN:
       currentEffect = FX_NONE;
       setBothRGBColors(180, 0, 100);
+      lastReceivedIrName = "MAGENTA / ROSE";
       Serial.println("[REMOTE] -> MAGENTA/ROSE");
       break;
     case IR_STROBE:
       currentEffect = FX_STROBE;
       effectStep = 0;
+      lastReceivedIrName = "STROBE";
       Serial.println("[REMOTE] -> Effect: STROBE (White pulse)");
       break;
 
@@ -668,21 +694,25 @@ void handlePhysicalIRCommand(uint32_t val) {
     case IR_LIGHT_ORANGE:
       currentEffect = FX_NONE;
       setBothRGBColors(255, 140, 0);
+      lastReceivedIrName = "AMBER";
       Serial.println("[REMOTE] -> AMBER / WARM YELLOW");
       break;
     case IR_LIGHT_BLUE:
       currentEffect = FX_NONE;
       setBothRGBColors(0, 160, 255);
+      lastReceivedIrName = "SKY BLUE";
       Serial.println("[REMOTE] -> SKY BLUE");
       break;
     case IR_PINK:
       currentEffect = FX_NONE;
       setBothRGBColors(255, 40, 160);
+      lastReceivedIrName = "PINK";
       Serial.println("[REMOTE] -> PINK");
       break;
     case IR_FADE:
       currentEffect = FX_FADE;
       effectStep = 0;
+      lastReceivedIrName = "FADE (Rainbow)";
       Serial.println("[REMOTE] -> Effect: FADE (Rainbow crossfade)");
       break;
 
@@ -690,25 +720,30 @@ void handlePhysicalIRCommand(uint32_t val) {
     case IR_YELLOW:
       currentEffect = FX_NONE;
       setBothRGBColors(255, 220, 0);
+      lastReceivedIrName = "YELLOW";
       Serial.println("[REMOTE] -> YELLOW");
       break;
     case IR_SKY_BLUE:
       currentEffect = FX_NONE;
       setBothRGBColors(50, 220, 255);
+      lastReceivedIrName = "ICE BLUE";
       Serial.println("[REMOTE] -> ICE BLUE");
       break;
     case IR_PURPLE:
       currentEffect = FX_NONE;
       setBothRGBColors(150, 0, 255);
+      lastReceivedIrName = "PURPLE";
       Serial.println("[REMOTE] -> PURPLE");
       break;
     case IR_SMOOTH:
       currentEffect = FX_SMOOTH;
       effectStep = 0;
+      lastReceivedIrName = "SMOOTH (Ambient)";
       Serial.println("[REMOTE] -> Effect: SMOOTH (Ambient breath)");
       break;
 
     default:
+      lastReceivedIrName = "UNMAPPED";
       Serial.printf("[REMOTE] Unmapped key: 0x%06lX\n", (unsigned long)val);
       break;
   }
@@ -882,6 +917,7 @@ void loop() {
   // 6. Serial Console Commands for Rapid Pin & Effect Testing
   if (Serial.available()) {
     char c = Serial.read();
+    if (c == 0 || c == '\n' || c == '\r') return; // Ignore null / newline
     if (c == 'r' || c == 'R') {
       currentEffect = FX_NONE;
       Serial.println("[SERIAL] Set RED (Both Strips)");
@@ -902,8 +938,28 @@ void loop() {
       currentEffect = FX_NONE;
       Serial.println("[SERIAL] Set OFF (Both Strips)");
       setBothRGBColors(0, 0, 0);
-      writeRGBPin(5, 0);
-      writeRGBPin(18, 0);
+    } else if (c == 'u' || c == 'U') {
+      Serial.println("\n--- [ULTRASONIC LIVE DIAGNOSTIC] ---");
+      for (int i = 0; i < 5; i++) {
+        pinMode(PIN_ECHO, INPUT);
+        int echoBefore = digitalRead(PIN_ECHO);
+        digitalWrite(PIN_TRIG, LOW);
+        delayMicroseconds(4);
+        digitalWrite(PIN_TRIG, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(PIN_TRIG, LOW);
+        long dur = pulseIn(PIN_ECHO, HIGH, 30000);
+        float d = (dur == 0) ? 999.0f : (dur * 0.0343f) / 2.0f;
+        Serial.printf(" Ping #%d: Echo Idle=%d | Duration=%lu us | Distance=%.1f cm\n", i + 1, echoBefore, dur, d);
+        delay(120);
+      }
+      Serial.println("------------------------------------");
+    } else if (c == 'i' || c == 'I') {
+      Serial.println("\n--- [IR RECEIVER DIAGNOSTIC] ---");
+      Serial.printf(" GPIO 15 pin level: %s (Idle should be HIGH)\n", 
+                    digitalRead(PIN_IR_RECV) == HIGH ? "HIGH (Normal)" : "LOW (Stuck/Inverted!)");
+      Serial.printf(" Last Decoded IR Hex: 0x%06lX (%s)\n", (unsigned long)lastReceivedIrHex, lastReceivedIrName.c_str());
+      Serial.println("---------------------------------");
     } else if (c == '1') {
       currentEffect = FX_NONE;
       Serial.printf("[SERIAL TEST] Strip 1 RED ONLY (GPIO %d)\n", pinRGB1_Red);
@@ -928,21 +984,12 @@ void loop() {
       currentEffect = FX_NONE;
       Serial.printf("[SERIAL TEST] Strip 2 BLUE ONLY (GPIO %d - RX2)\n", pinRGB2_Blue);
       setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(0, 0, 255);
-    } else if (c == '7') {
-      currentEffect = FX_NONE;
-      Serial.println("[SERIAL TEST] Testing GPIO 5 (D5 / HC-SR04 Trig) -> Pulling LOW (LED ON if miswired here)");
-      pinMode(5, OUTPUT);
-      writeRGBPin(5, 255);
-    } else if (c == '8') {
-      currentEffect = FX_NONE;
-      Serial.println("[SERIAL TEST] Testing GPIO 18 (D18 / HC-SR04 Echo) -> Pulling LOW (LED ON if miswired here)");
-      pinMode(18, OUTPUT);
-      writeRGBPin(18, 255);
     } else if (c == 'x' || c == 'X') {
       std::swap(pinRGB2_Red, pinRGB2_Green);
       Serial.printf("[SERIAL CALIBRATION] Swapped Strip 2 Red & Green -> Red: %d, Green: %d\n", pinRGB2_Red, pinRGB2_Green);
     } else if (c == 'y' || c == 'Y') {
       std::swap(pinRGB2_Green, pinRGB2_Blue);
+      Serial.printf("[SERIAL CALIBRATION] Swapped Strip 2 Green & Blue -> Green: %d, Blue: %d\n", pinRGB2_Green, pinRGB2_Blue);
       Serial.printf("[SERIAL CALIBRATION] Swapped Strip 2 Green & Blue -> Green: %d, Blue: %d\n", pinRGB2_Green, pinRGB2_Blue);
     } else if (c == 't' || c == 'T') {
       currentEffect = FX_NONE;

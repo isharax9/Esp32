@@ -654,21 +654,38 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <button class="cal-btn" onclick="swapPins('2','swap_gb')">🔄 Swap G & B</button>
             <button class="cal-btn" onclick="swapPins('2','swap_rb')">🔄 Swap R & B</button>
           </div>
-          <div class="cal-btn-row" style="margin-top:6px;">
-            <button class="cal-btn" style="color:#eab308; border-color:rgba(234,179,8,0.4);" onclick="testChannel('2','d5')">⚠️ Test D5 (Trig)</button>
-            <button class="cal-btn" style="color:#eab308; border-color:rgba(234,179,8,0.4);" onclick="testChannel('2','d18')">⚠️ Test D18 (Echo)</button>
-          </div>
         </div>
 
         <button class="btn btn-dark" style="width:100%; margin-top:4px;" onclick="testChannel('all','off')">Turn Off Test Lights</button>
 
-        <!-- Important Hardware Pin Guidance Notice -->
-        <div style="margin-top:14px; padding:12px 14px; border-radius:12px; background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.25); font-size:0.75rem; color:#fcd34d; line-height:1.5;">
-          ⚠️ <b>ESP32 DevKit V1 Pin Location Guide:</b><br>
-          • <b>Red Wire:</b> Pin labeled <b>D19</b> (Pin 6 on right side)<br>
-          • <b>Green Wire:</b> Pin labeled <b>TX2</b> (GPIO 17, Pin 9 on right side — <i>skip D18 & D5!</i>)<br>
-          • <b>Blue Wire:</b> Pin labeled <b>RX2</b> (GPIO 16, Pin 10 on right side)<br>
-          • <b>Longest Leg (Anode):</b> Must connect via 220Ω resistor to <b>+3.3V</b> (NOT GND, NOT directly to 5V VIN).
+        <!-- Live Physical Remote Signal Sniffer Card -->
+        <div class="pin-box" style="margin-top:14px;">
+          <div class="pin-title">
+            <span>Live 24-Key Remote Sniffer</span>
+            <span style="color:var(--green); font-size:0.72rem; font-weight:700;">● Listening</span>
+          </div>
+          <p style="font-size:0.72rem; color:var(--muted); margin-bottom:8px;">
+            Point your remote at the VS1838B sensor and press any button to inspect live codes:
+          </p>
+          <div style="display:flex; align-items:center; justify-content:space-between; background:var(--card-bg); padding:10px 14px; border-radius:10px; border:1px solid var(--border);">
+            <div>
+              <div style="font-size:0.65rem; color:var(--muted); text-transform:uppercase; font-weight:700;">Received Hex</div>
+              <div id="remote-hex" style="font-family:monospace; font-size:1.1rem; font-weight:800; color:var(--text); letter-spacing:1px;">0x000000</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:0.65rem; color:var(--muted); text-transform:uppercase; font-weight:700;">Identified Button</div>
+              <div id="remote-name" style="font-size:0.85rem; font-weight:800; color:var(--accent);">Ready for input</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ultrasonic Sensor Hardware Guidance -->
+        <div style="margin-top:14px; padding:12px 14px; border-radius:12px; background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.25); font-size:0.75rem; color:#93c5fd; line-height:1.5;">
+          📡 <b>Ultrasonic Sensor Wiring Check:</b><br>
+          • <b>VCC:</b> Must connect to <b>5V / VIN rail</b> (HC-SR04 requires 5V to ping)<br>
+          • <b>GND:</b> Common GND rail<br>
+          • <b>Trig:</b> ESP32 pin <b>D5</b><br>
+          • <b>Echo:</b> ESP32 pin <b>D18</b> (via 1k/2k voltage divider)
         </div>
       </div>
     </div>
@@ -913,6 +930,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           document.getElementById("p2-r").innerText = `R: GPIO ${d.s2.r}`;
           document.getElementById("p2-g").innerText = `G: GPIO ${d.s2.g}`;
           document.getElementById("p2-b").innerText = `B: GPIO ${d.s2.b}`;
+        }
+
+        // Live Remote Signal
+        if (d.lastIrHex && d.lastIrHex !== "0x000000") {
+          const rh = document.getElementById("remote-hex");
+          const rn = document.getElementById("remote-name");
+          if (rh) rh.innerText = d.lastIrHex;
+          if (rn) {
+            rn.innerText = d.lastIrName;
+            rn.style.color = (d.lastIrName === "UNMAPPED") ? "#ef4444" : "#22c55e";
+          }
         }
 
       } catch (err) {
