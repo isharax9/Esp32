@@ -42,6 +42,22 @@ float currentTemperature     = -999.0f;
 float currentHumidity        = -999.0f;
 unsigned long lastDHTReadMs  = 0;
 
+// Brightness & Dynamic Lighting Effects
+uint8_t currentBrightness = 255; // 0-255 scale
+uint8_t baseR = 0, baseG = 0, baseB = 0; // Stored base color before brightness scaling
+
+enum EffectMode {
+  FX_NONE,
+  FX_FLASH,
+  FX_STROBE,
+  FX_FADE,
+  FX_SMOOTH
+};
+
+EffectMode currentEffect = FX_NONE;
+unsigned long lastEffectUpdateMs = 0;
+uint16_t effectStep = 0;
+
 // Hardware Peripherals
 IRsend irsend(PIN_IR_LED);
 IRrecv irrecv(PIN_IR_RECV);
@@ -84,52 +100,188 @@ float getSmoothedDistanceCM() {
 // ==========================================
 // Dual RGB Light Output Helpers (Direct Pins)
 // ==========================================
-void setRGB1Color(uint8_t r, uint8_t g, uint8_t b) {
-#if ENABLE_DIRECT_RGB
-  #if RGB_COMMON_ANODE
-    digitalWrite(PIN_RGB1_RED,   r ? LOW : HIGH);
-    digitalWrite(PIN_RGB1_GREEN, g ? LOW : HIGH);
-    digitalWrite(PIN_RGB1_BLUE,  b ? LOW : HIGH);
-  #else
-    digitalWrite(PIN_RGB1_RED,   r ? HIGH : LOW);
-    digitalWrite(PIN_RGB1_GREEN, g ? HIGH : LOW);
-    digitalWrite(PIN_RGB1_BLUE,  b ? HIGH : LOW);
-  #endif
+// Dynamic pin mappings (calibratable at runtime from Mobile UI)
+uint8_t pinRGB1_Red   = PIN_RGB1_RED;
+uint8_t pinRGB1_Green = PIN_RGB1_GREEN;
+uint8_t pinRGB1_Blue  = PIN_RGB1_BLUE;
+
+uint8_t pinRGB2_Red   = PIN_RGB2_RED;
+uint8_t pinRGB2_Green = PIN_RGB2_GREEN;
+uint8_t pinRGB2_Blue  = PIN_RGB2_BLUE;
+
+void writeRGBPin(uint8_t pin, uint8_t duty) {
+#if RGB_COMMON_ANODE
+  analogWrite(pin, 255 - duty);
+#else
+  analogWrite(pin, duty);
 #endif
+}
+
+void setRGB1ColorRaw(uint8_t r, uint8_t g, uint8_t b) {
+#if ENABLE_DIRECT_RGB
+  writeRGBPin(pinRGB1_Red,   r);
+  writeRGBPin(pinRGB1_Green, g);
+  writeRGBPin(pinRGB1_Blue,  b);
+#endif
+}
+
+void setRGB2ColorRaw(uint8_t r, uint8_t g, uint8_t b) {
+#if ENABLE_DIRECT_RGB
+  writeRGBPin(pinRGB2_Red,   r);
+  writeRGBPin(pinRGB2_Green, g);
+  writeRGBPin(pinRGB2_Blue,  b);
+#endif
+}
+
+void setRGB1Color(uint8_t r, uint8_t g, uint8_t b) {
+  uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
+  uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
+  uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
+  setRGB1ColorRaw(sr, sg, sb);
 }
 
 void setRGB2Color(uint8_t r, uint8_t g, uint8_t b) {
-#if ENABLE_DIRECT_RGB
-  #if RGB_COMMON_ANODE
-    digitalWrite(PIN_RGB2_RED,   r ? LOW : HIGH);
-    digitalWrite(PIN_RGB2_GREEN, g ? LOW : HIGH);
-    digitalWrite(PIN_RGB2_BLUE,  b ? LOW : HIGH);
-  #else
-    digitalWrite(PIN_RGB2_RED,   r ? HIGH : LOW);
-    digitalWrite(PIN_RGB2_GREEN, g ? HIGH : LOW);
-    digitalWrite(PIN_RGB2_BLUE,  b ? HIGH : LOW);
-  #endif
-#endif
+  uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
+  uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
+  uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
+  setRGB2ColorRaw(sr, sg, sb);
 }
 
 void setBothRGBColors(uint8_t r, uint8_t g, uint8_t b) {
-  setRGB1Color(r, g, b);
-  setRGB2Color(r, g, b);
+  baseR = r;
+  baseG = g;
+  baseB = b;
+  uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
+  uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
+  uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
+  setRGB1ColorRaw(sr, sg, sb);
+  setRGB2ColorRaw(sr, sg, sb);
 }
 
-// Safely send external IR codes with receiver protection
+void updateBrightness(int8_t step) {
+  int newB = (int)currentBrightness + (step * 51);
+  if (newB < 25) newB = 25;       // Minimum 10%
+  if (newB > 255) newB = 255;   // Maximum 100%
+  currentBrightness = (uint8_t)newB;
+  Serial.printf("[BRIGHTNESS] Level: %d/255 (%d%%)\n", currentBrightness, (currentBrightness * 100) / 255);
+  if (currentEffect == FX_NONE) {
+    uint8_t sr = ((uint16_t)baseR * currentBrightness) / 255;
+    uint8_t sg = ((uint16_t)baseG * currentBrightness) / 255;
+    uint8_t sb = ((uint16_t)baseB * currentBrightness) / 255;
+    setRGB1ColorRaw(sr, sg, sb);
+    setRGB2ColorRaw(sr, sg, sb);
+  }
+}
+
+// Convert HSV (h: 0-359, s: 0-255, v: 0-255) to RGB (0-255)
+void hsvToRgb(uint16_t h, uint8_t s, uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b) {
+  if (s == 0) {
+    r = g = b = v;
+    return;
+  }
+  uint8_t region = (h % 360) / 60;
+  uint16_t remainder = ((h % 360) - (region * 60)) * 6;
+  uint8_t p = (v * (255 - s)) >> 8;
+  uint8_t q = (v * (255 - ((s * remainder) >> 8))) >> 8;
+  uint8_t t = (v * (255 - ((s * (1530 - remainder)) >> 8))) >> 8;
+
+  switch (region) {
+    case 0: r = v; g = t; b = p; break;
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    default: r = v; g = p; b = q; break;
+  }
+}
+
+void updateEffects() {
+  if (currentEffect == FX_NONE) return;
+
+  unsigned long now = millis();
+
+  if (currentEffect == FX_FLASH) {
+    // 7-color jumping cycle every 350ms
+    if (now - lastEffectUpdateMs >= 350) {
+      lastEffectUpdateMs = now;
+      const uint8_t flashColors[7][3] = {
+        {255, 0, 0},     // Red
+        {0, 255, 0},     // Green
+        {0, 0, 255},     // Blue
+        {255, 255, 0},   // Yellow
+        {0, 255, 255},   // Cyan
+        {255, 0, 255},   // Magenta
+        {255, 255, 255}  // White
+      };
+      effectStep = (effectStep + 1) % 7;
+      uint8_t r = flashColors[effectStep][0];
+      uint8_t g = flashColors[effectStep][1];
+      uint8_t b = flashColors[effectStep][2];
+      uint8_t sr = ((uint16_t)r * currentBrightness) / 255;
+      uint8_t sg = ((uint16_t)g * currentBrightness) / 255;
+      uint8_t sb = ((uint16_t)b * currentBrightness) / 255;
+      setRGB1ColorRaw(sr, sg, sb);
+      setRGB2ColorRaw(sr, sg, sb);
+    }
+  } else if (currentEffect == FX_STROBE) {
+    // Rapid strobe pulse
+    if (now - lastEffectUpdateMs >= (effectStep ? 60 : 100)) {
+      lastEffectUpdateMs = now;
+      effectStep = !effectStep;
+      if (effectStep) {
+        uint8_t sw = currentBrightness;
+        setRGB1ColorRaw(sw, sw, sw);
+        setRGB2ColorRaw(sw, sw, sw);
+      } else {
+        setRGB1ColorRaw(0, 0, 0);
+        setRGB2ColorRaw(0, 0, 0);
+      }
+    }
+  } else if (currentEffect == FX_FADE) {
+    // Smooth 360-degree rainbow crossfade
+    if (now - lastEffectUpdateMs >= 25) {
+      lastEffectUpdateMs = now;
+      effectStep = (effectStep + 1) % 360;
+      uint8_t r, g, b;
+      hsvToRgb(effectStep, 255, currentBrightness, r, g, b);
+      setRGB1ColorRaw(r, g, b);
+      setRGB2ColorRaw(r, g, b);
+    }
+  } else if (currentEffect == FX_SMOOTH) {
+    // Relaxing soft ambient breathing cycle
+    if (now - lastEffectUpdateMs >= 35) {
+      lastEffectUpdateMs = now;
+      effectStep = (effectStep + 1) % 360;
+      uint8_t r, g, b;
+      hsvToRgb(effectStep, 175, currentBrightness, r, g, b);
+      setRGB1ColorRaw(r, g, b);
+      setRGB2ColorRaw(r, g, b);
+    }
+  }
+}
+
+// Optical self-interference protection timestamp
+unsigned long lastIrTxTimestamp = 0;
+
+// Safely send external IR codes with optical loop protection
 void sendExternalIR(uint32_t code) {
+#if ENABLE_EXTERNAL_IR_TRANSMIT
   if (code == 0) return;
+  lastIrTxTimestamp = millis();
   irrecv.disableIRIn();
   irsend.sendNEC(code, 32);
-  delay(60); // Allow optical pulse burst to dissipate
+  delay(80); // Allow optical pulse burst to dissipate
   irrecv.enableIRIn();
+#else
+  (void)code;
+#endif
 }
 
 // ==========================================
 // Pomodoro State Helpers
 // ==========================================
 void startWorkSession() {
+  currentEffect = FX_NONE;
   currentState = STATE_WORK;
   isPaused = false;
   autoPausedByAbsence = false;
@@ -142,6 +294,7 @@ void startWorkSession() {
 }
 
 void startBreakSession() {
+  currentEffect = FX_NONE;
   currentState = STATE_BREAK;
   isPaused = false;
   autoPausedByAbsence = false;
@@ -157,6 +310,7 @@ void startBreakSession() {
 void pauseSession(bool byAbsence = false) {
   if (currentState == STATE_IDLE || isPaused) return;
 
+  currentEffect = FX_NONE;
   unsigned long elapsed = millis() - phaseStartTime;
   if (elapsed < phaseDurationMs) {
     remainingMs = phaseDurationMs - elapsed;
@@ -173,6 +327,7 @@ void pauseSession(bool byAbsence = false) {
 void resumeSession() {
   if (currentState == STATE_IDLE || !isPaused) return;
 
+  currentEffect = FX_NONE;
   phaseStartTime = millis() - (phaseDurationMs - remainingMs);
   isPaused = false;
   autoPausedByAbsence = false;
@@ -189,6 +344,7 @@ void resumeSession() {
 }
 
 void resetPomodoro() {
+  currentEffect = FX_NONE;
   currentState = STATE_IDLE;
   isPaused = false;
   autoPausedByAbsence = false;
@@ -231,7 +387,7 @@ void handleApiStatus() {
   if (currentState == STATE_WORK) stateStr = "WORK";
   else if (currentState == STATE_BREAK) stateStr = "BREAK";
 
-  char jsonBuf[320];
+  char jsonBuf[420];
   snprintf(jsonBuf, sizeof(jsonBuf),
     "{\"state\":\"%s\","
     "\"isPaused\":%s,"
@@ -242,7 +398,11 @@ void handleApiStatus() {
     "\"autoPauseEnabled\":%s,"
     "\"cyclesCompleted\":%lu,"
     "\"temperature\":%.1f,"
-    "\"humidity\":%.1f}",
+    "\"humidity\":%.1f,"
+    "\"brightness\":%d,"
+    "\"effect\":%d,"
+    "\"s1\":{\"r\":%d,\"g\":%d,\"b\":%d},"
+    "\"s2\":{\"r\":%d,\"g\":%d,\"b\":%d}}",
     stateStr.c_str(),
     isPaused ? "true" : "false",
     phaseDurationMs / 1000UL,
@@ -252,7 +412,11 @@ void handleApiStatus() {
     autoPauseEnabled ? "true" : "false",
     cyclesCompleted,
     currentTemperature,
-    currentHumidity
+    currentHumidity,
+    currentBrightness,
+    (int)currentEffect,
+    pinRGB1_Red, pinRGB1_Green, pinRGB1_Blue,
+    pinRGB2_Red, pinRGB2_Green, pinRGB2_Blue
   );
 
   server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -271,19 +435,38 @@ void handleApiCmd() {
       else setBothRGBColors(r, g, b);
     };
 
-    if (val == "on")            { code = IR_POWER_ON;  applyColor(255, 255, 255); }
-    else if (val == "off")       { code = IR_POWER_OFF; applyColor(0, 0, 0); }
-    else if (val == "bright_up") { code = IR_BRIGHT_UP; }
-    else if (val == "bright_dn") { code = IR_BRIGHT_DN; }
-    else if (val == "red")       { code = IR_RED;       applyColor(255, 0, 0); }
-    else if (val == "green")     { code = IR_GREEN;     applyColor(0, 255, 0); }
-    else if (val == "blue")      { code = IR_BLUE;      applyColor(0, 0, 255); }
-    else if (val == "white")     { code = IR_WHITE;     applyColor(255, 255, 255); }
-    else if (val == "orange")    { code = IR_ORANGE;    applyColor(255, 120, 0); }
-    else if (val == "cyan")      { code = IR_CYAN;      applyColor(0, 255, 255); }
-    else if (val == "purple")    { code = IR_PURPLE;    applyColor(255, 0, 255); }
-    else if (val == "flash")     { code = IR_FLASH; }
-    else if (val == "smooth")    { code = IR_SMOOTH; }
+    if (val == "on")            { currentEffect = FX_NONE; code = IR_POWER_ON;  applyColor(255, 255, 255); }
+    else if (val == "off")       { currentEffect = FX_NONE; code = IR_POWER_OFF; applyColor(0, 0, 0); }
+    else if (val == "bright_up") { code = IR_BRIGHT_UP; updateBrightness(+1); }
+    else if (val == "bright_dn") { code = IR_BRIGHT_DN; updateBrightness(-1); }
+    else if (val == "brightness" && server.hasArg("level")) {
+      currentBrightness = constrain(server.arg("level").toInt(), 10, 255);
+      if (currentEffect == FX_NONE) {
+        applyColor(baseR, baseG, baseB);
+      }
+      server.send(200, "application/json", "{\"status\":\"ok\"}");
+      return;
+    }
+    else if (val == "red")       { currentEffect = FX_NONE; code = IR_RED;       applyColor(255, 0, 0); }
+    else if (val == "green")     { currentEffect = FX_NONE; code = IR_GREEN;     applyColor(0, 255, 0); }
+    else if (val == "blue")      { currentEffect = FX_NONE; code = IR_BLUE;      applyColor(0, 0, 255); }
+    else if (val == "white")     { currentEffect = FX_NONE; code = IR_WHITE;     applyColor(255, 255, 255); }
+    else if (val == "orange")    { currentEffect = FX_NONE; code = IR_ORANGE;    applyColor(255, 80, 0); }
+    else if (val == "pea_green") { currentEffect = FX_NONE; code = IR_PEA_GREEN; applyColor(40, 255, 20); }
+    else if (val == "dark_blue") { currentEffect = FX_NONE; code = IR_DARK_BLUE; applyColor(0, 50, 255); }
+    else if (val == "dark_orange") { currentEffect = FX_NONE; code = IR_DARK_ORANGE; applyColor(255, 35, 0); }
+    else if (val == "cyan")      { currentEffect = FX_NONE; code = IR_CYAN;      applyColor(0, 255, 255); }
+    else if (val == "purple")    { currentEffect = FX_NONE; code = IR_PURPLE;    applyColor(150, 0, 255); }
+    else if (val == "brown" || val == "magenta") { currentEffect = FX_NONE; code = IR_BROWN; applyColor(180, 0, 100); }
+    else if (val == "light_orange" || val == "amber") { currentEffect = FX_NONE; code = IR_LIGHT_ORANGE; applyColor(255, 140, 0); }
+    else if (val == "light_blue" || val == "sky_blue") { currentEffect = FX_NONE; code = IR_LIGHT_BLUE; applyColor(0, 160, 255); }
+    else if (val == "pink")      { currentEffect = FX_NONE; code = IR_PINK;      applyColor(255, 40, 160); }
+    else if (val == "yellow")    { currentEffect = FX_NONE; code = IR_YELLOW;    applyColor(255, 220, 0); }
+    else if (val == "ice_blue")  { currentEffect = FX_NONE; code = IR_SKY_BLUE;  applyColor(50, 220, 255); }
+    else if (val == "flash")     { currentEffect = FX_FLASH; effectStep = 0; code = IR_FLASH; }
+    else if (val == "strobe")    { currentEffect = FX_STROBE; effectStep = 0; code = IR_STROBE; }
+    else if (val == "fade")      { currentEffect = FX_FADE; effectStep = 0; code = IR_FADE; }
+    else if (val == "smooth")    { currentEffect = FX_SMOOTH; effectStep = 0; code = IR_SMOOTH; }
 
     if (code != 0) {
       sendExternalIR(code);
@@ -293,6 +476,68 @@ void handleApiCmd() {
     }
   }
   server.send(400, "application/json", "{\"error\":\"invalid command\"}");
+}
+
+void handleApiCalibrate() {
+  String strip = server.hasArg("strip") ? server.arg("strip") : "1";
+
+  if (server.hasArg("action")) {
+    String action = server.arg("action");
+    if (strip == "1") {
+      if (action == "swap_rg") std::swap(pinRGB1_Red, pinRGB1_Green);
+      else if (action == "swap_gb") std::swap(pinRGB1_Green, pinRGB1_Blue);
+      else if (action == "swap_rb") std::swap(pinRGB1_Red, pinRGB1_Blue);
+    } else if (strip == "2") {
+      if (action == "swap_rg") std::swap(pinRGB2_Red, pinRGB2_Green);
+      else if (action == "swap_gb") std::swap(pinRGB2_Green, pinRGB2_Blue);
+      else if (action == "swap_rb") std::swap(pinRGB2_Red, pinRGB2_Blue);
+      else if (action == "set_green_d5") { pinRGB2_Green = 5; }
+      else if (action == "set_green_d17") { pinRGB2_Green = 17; }
+    }
+    pinMode(pinRGB1_Red, OUTPUT);
+    pinMode(pinRGB1_Green, OUTPUT);
+    pinMode(pinRGB1_Blue, OUTPUT);
+    pinMode(pinRGB2_Red, OUTPUT);
+    pinMode(pinRGB2_Green, OUTPUT);
+    pinMode(pinRGB2_Blue, OUTPUT);
+    
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
+    return;
+  }
+
+  if (server.hasArg("test")) {
+    String test = server.arg("test");
+    currentEffect = FX_NONE;
+    if (test == "r") {
+      if (strip == "1") { setRGB1ColorRaw(255, 0, 0); setRGB2ColorRaw(0, 0, 0); }
+      else if (strip == "2") { setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(255, 0, 0); }
+      else { setBothRGBColors(255, 0, 0); }
+    } else if (test == "g") {
+      if (strip == "1") { setRGB1ColorRaw(0, 255, 0); setRGB2ColorRaw(0, 0, 0); }
+      else if (strip == "2") { setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(0, 255, 0); } // Calibrated Green!
+      else { setBothRGBColors(0, 255, 0); }
+    } else if (test == "b") {
+      if (strip == "1") { setRGB1ColorRaw(0, 0, 255); setRGB2ColorRaw(0, 0, 0); }
+      else if (strip == "2") { setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(0, 0, 255); }
+      else { setBothRGBColors(0, 0, 255); }
+    } else if (test == "d5") {
+      pinMode(5, OUTPUT);
+      writeRGBPin(5, 255);
+    } else if (test == "d18") {
+      pinMode(18, OUTPUT);
+      writeRGBPin(18, 255);
+    } else if (test == "off") {
+      setBothRGBColors(0, 0, 0);
+      writeRGBPin(5, 0);
+      writeRGBPin(18, 0);
+    }
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
+    return;
+  }
+
+  server.send(400, "application/json", "{\"error\":\"missing param\"}");
 }
 
 void handleApiPomodoro() {
@@ -329,6 +574,9 @@ void handleApiSettings() {
 // Physical 24-Key IR Remote Handler
 // ==========================================
 void handlePhysicalIRCommand(uint32_t val) {
+  // Reject optical reflections from internal IR transmissions
+  if (millis() - lastIrTxTimestamp < 400) return;
+
   static unsigned long lastRemoteTime = 0;
   if (millis() - lastRemoteTime < 200) return; // Debounce rapid repeats
   lastRemoteTime = millis();
@@ -338,17 +586,20 @@ void handlePhysicalIRCommand(uint32_t val) {
   switch (val) {
     // Row 1
     case IR_POWER_ON:
-    case IR_BRIGHT_UP:
+      currentEffect = FX_NONE;
       setBothRGBColors(255, 255, 255);
       Serial.println("[REMOTE] -> Lights ON (White)");
       break;
     case IR_POWER_OFF:
+      currentEffect = FX_NONE;
       setBothRGBColors(0, 0, 0);
       Serial.println("[REMOTE] -> Lights OFF");
       break;
+    case IR_BRIGHT_UP:
+      updateBrightness(+1);
+      break;
     case IR_BRIGHT_DN:
-      setBothRGBColors(120, 120, 120);
-      Serial.println("[REMOTE] -> Dim White");
+      updateBrightness(-1);
       break;
 
     // Row 2
@@ -359,6 +610,7 @@ void handlePhysicalIRCommand(uint32_t val) {
       startBreakSession();
       break;
     case IR_BLUE:
+      currentEffect = FX_NONE;
       setBothRGBColors(0, 0, 255);
       Serial.println("[REMOTE] -> BLUE");
       break;
@@ -370,74 +622,90 @@ void handlePhysicalIRCommand(uint32_t val) {
 
     // Row 3
     case IR_ORANGE:
-      setBothRGBColors(255, 120, 0);
+      currentEffect = FX_NONE;
+      setBothRGBColors(255, 80, 0);
       Serial.println("[REMOTE] -> ORANGE");
       break;
     case IR_PEA_GREEN:
-      setBothRGBColors(100, 255, 50);
+      currentEffect = FX_NONE;
+      setBothRGBColors(40, 255, 20);
       Serial.println("[REMOTE] -> PEA GREEN");
       break;
     case IR_DARK_BLUE:
-      setBothRGBColors(0, 0, 180);
+      currentEffect = FX_NONE;
+      setBothRGBColors(0, 50, 255);
       Serial.println("[REMOTE] -> DARK BLUE");
       break;
     case IR_FLASH:
-      setBothRGBColors(255, 0, 120);
-      Serial.println("[REMOTE] -> FLASH");
+      currentEffect = FX_FLASH;
+      effectStep = 0;
+      Serial.println("[REMOTE] -> Effect: FLASH (7-color jump)");
       break;
 
     // Row 4
     case IR_DARK_ORANGE:
-      setBothRGBColors(255, 60, 0);
+      currentEffect = FX_NONE;
+      setBothRGBColors(255, 35, 0);
       Serial.println("[REMOTE] -> DARK ORANGE");
       break;
     case IR_CYAN:
+      currentEffect = FX_NONE;
       setBothRGBColors(0, 255, 255);
       Serial.println("[REMOTE] -> CYAN");
       break;
     case IR_BROWN:
-      setBothRGBColors(180, 0, 180);
-      Serial.println("[REMOTE] -> PURPLE/BROWN");
+      currentEffect = FX_NONE;
+      setBothRGBColors(180, 0, 100);
+      Serial.println("[REMOTE] -> MAGENTA/ROSE");
       break;
     case IR_STROBE:
-      setBothRGBColors(255, 255, 255);
-      Serial.println("[REMOTE] -> STROBE / WHITE");
+      currentEffect = FX_STROBE;
+      effectStep = 0;
+      Serial.println("[REMOTE] -> Effect: STROBE (White pulse)");
       break;
 
     // Row 5
     case IR_LIGHT_ORANGE:
-      setBothRGBColors(255, 180, 0);
-      Serial.println("[REMOTE] -> WARM YELLOW");
+      currentEffect = FX_NONE;
+      setBothRGBColors(255, 140, 0);
+      Serial.println("[REMOTE] -> AMBER / WARM YELLOW");
       break;
     case IR_LIGHT_BLUE:
-      setBothRGBColors(100, 200, 255);
+      currentEffect = FX_NONE;
+      setBothRGBColors(0, 160, 255);
       Serial.println("[REMOTE] -> SKY BLUE");
       break;
     case IR_PINK:
-      setBothRGBColors(255, 105, 180);
+      currentEffect = FX_NONE;
+      setBothRGBColors(255, 40, 160);
       Serial.println("[REMOTE] -> PINK");
       break;
     case IR_FADE:
-      setBothRGBColors(150, 0, 255);
-      Serial.println("[REMOTE] -> FADE / VIOLET");
+      currentEffect = FX_FADE;
+      effectStep = 0;
+      Serial.println("[REMOTE] -> Effect: FADE (Rainbow crossfade)");
       break;
 
     // Row 6
     case IR_YELLOW:
-      setBothRGBColors(255, 255, 0);
+      currentEffect = FX_NONE;
+      setBothRGBColors(255, 220, 0);
       Serial.println("[REMOTE] -> YELLOW");
       break;
     case IR_SKY_BLUE:
-      setBothRGBColors(120, 220, 255);
+      currentEffect = FX_NONE;
+      setBothRGBColors(50, 220, 255);
       Serial.println("[REMOTE] -> ICE BLUE");
       break;
     case IR_PURPLE:
-      setBothRGBColors(200, 0, 255);
+      currentEffect = FX_NONE;
+      setBothRGBColors(150, 0, 255);
       Serial.println("[REMOTE] -> PURPLE");
       break;
     case IR_SMOOTH:
-      setBothRGBColors(0, 255, 150);
-      Serial.println("[REMOTE] -> SMOOTH / TEAL");
+      currentEffect = FX_SMOOTH;
+      effectStep = 0;
+      Serial.println("[REMOTE] -> Effect: SMOOTH (Ambient breath)");
       break;
 
     default:
@@ -462,13 +730,13 @@ void setup() {
   digitalWrite(PIN_TRIG, LOW);
 
 #if ENABLE_DIRECT_RGB
-  pinMode(PIN_RGB1_RED, OUTPUT);
-  pinMode(PIN_RGB1_GREEN, OUTPUT);
-  pinMode(PIN_RGB1_BLUE, OUTPUT);
+  pinMode(pinRGB1_Red, OUTPUT);
+  pinMode(pinRGB1_Green, OUTPUT);
+  pinMode(pinRGB1_Blue, OUTPUT);
 
-  pinMode(PIN_RGB2_RED, OUTPUT);
-  pinMode(PIN_RGB2_GREEN, OUTPUT);
-  pinMode(PIN_RGB2_BLUE, OUTPUT);
+  pinMode(pinRGB2_Red, OUTPUT);
+  pinMode(pinRGB2_Green, OUTPUT);
+  pinMode(pinRGB2_Blue, OUTPUT);
 
   setBothRGBColors(0, 0, 0); // Start with LEDs OFF so user can clearly see button responses
 #endif
@@ -520,6 +788,7 @@ void setup() {
   server.on("/api/cmd", HTTP_ANY, handleApiCmd);
   server.on("/api/pomodoro", HTTP_ANY, handleApiPomodoro);
   server.on("/api/settings", HTTP_ANY, handleApiSettings);
+  server.on("/api/calibrate", HTTP_ANY, handleApiCalibrate);
 
   server.begin();
   Serial.println("[HTTP] Web dashboard ready on port 80");
@@ -598,7 +867,10 @@ void loop() {
     }
   }
 
-  // 4. Physical IR Remote Decoding
+  // 4. Update Dynamic Lighting Effects (Flash, Strobe, Fade, Smooth)
+  updateEffects();
+
+  // 5. Physical IR Remote Decoding
   if (irrecv.decode(&irResults)) {
     uint32_t val = (uint32_t)irResults.value;
     if (val != 0 && val != 0xFFFFFFFF) {
@@ -607,24 +879,110 @@ void loop() {
     irrecv.resume();
   }
 
-  // 5. Serial Console Commands for Rapid Pin Testing
+  // 6. Serial Console Commands for Rapid Pin & Effect Testing
   if (Serial.available()) {
     char c = Serial.read();
     if (c == 'r' || c == 'R') {
-      Serial.println("[SERIAL] Set RED");
+      currentEffect = FX_NONE;
+      Serial.println("[SERIAL] Set RED (Both Strips)");
       setBothRGBColors(255, 0, 0);
     } else if (c == 'g' || c == 'G') {
-      Serial.println("[SERIAL] Set GREEN");
+      currentEffect = FX_NONE;
+      Serial.println("[SERIAL] Set GREEN (Both Strips)");
       setBothRGBColors(0, 255, 0);
     } else if (c == 'b' || c == 'B') {
-      Serial.println("[SERIAL] Set BLUE");
+      currentEffect = FX_NONE;
+      Serial.println("[SERIAL] Set BLUE (Both Strips)");
       setBothRGBColors(0, 0, 255);
     } else if (c == 'w' || c == 'W') {
-      Serial.println("[SERIAL] Set WHITE");
+      currentEffect = FX_NONE;
+      Serial.println("[SERIAL] Set WHITE (Both Strips)");
       setBothRGBColors(255, 255, 255);
     } else if (c == 'o' || c == 'O') {
-      Serial.println("[SERIAL] Set OFF");
+      currentEffect = FX_NONE;
+      Serial.println("[SERIAL] Set OFF (Both Strips)");
       setBothRGBColors(0, 0, 0);
+      writeRGBPin(5, 0);
+      writeRGBPin(18, 0);
+    } else if (c == '1') {
+      currentEffect = FX_NONE;
+      Serial.printf("[SERIAL TEST] Strip 1 RED ONLY (GPIO %d)\n", pinRGB1_Red);
+      setRGB1ColorRaw(255, 0, 0); setRGB2ColorRaw(0, 0, 0);
+    } else if (c == '2') {
+      currentEffect = FX_NONE;
+      Serial.printf("[SERIAL TEST] Strip 1 GREEN ONLY (GPIO %d)\n", pinRGB1_Green);
+      setRGB1ColorRaw(0, 255, 0); setRGB2ColorRaw(0, 0, 0);
+    } else if (c == '3') {
+      currentEffect = FX_NONE;
+      Serial.printf("[SERIAL TEST] Strip 1 BLUE ONLY (GPIO %d)\n", pinRGB1_Blue);
+      setRGB1ColorRaw(0, 0, 255); setRGB2ColorRaw(0, 0, 0);
+    } else if (c == '4') {
+      currentEffect = FX_NONE;
+      Serial.printf("[SERIAL TEST] Strip 2 RED ONLY (GPIO %d - D19)\n", pinRGB2_Red);
+      setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(255, 0, 0);
+    } else if (c == '5') {
+      currentEffect = FX_NONE;
+      Serial.printf("[SERIAL TEST] Strip 2 GREEN ONLY (GPIO %d - TX2)\n", pinRGB2_Green);
+      setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(0, 255, 0);
+    } else if (c == '6') {
+      currentEffect = FX_NONE;
+      Serial.printf("[SERIAL TEST] Strip 2 BLUE ONLY (GPIO %d - RX2)\n", pinRGB2_Blue);
+      setRGB1ColorRaw(0, 0, 0); setRGB2ColorRaw(0, 0, 255);
+    } else if (c == '7') {
+      currentEffect = FX_NONE;
+      Serial.println("[SERIAL TEST] Testing GPIO 5 (D5 / HC-SR04 Trig) -> Pulling LOW (LED ON if miswired here)");
+      pinMode(5, OUTPUT);
+      writeRGBPin(5, 255);
+    } else if (c == '8') {
+      currentEffect = FX_NONE;
+      Serial.println("[SERIAL TEST] Testing GPIO 18 (D18 / HC-SR04 Echo) -> Pulling LOW (LED ON if miswired here)");
+      pinMode(18, OUTPUT);
+      writeRGBPin(18, 255);
+    } else if (c == 'x' || c == 'X') {
+      std::swap(pinRGB2_Red, pinRGB2_Green);
+      Serial.printf("[SERIAL CALIBRATION] Swapped Strip 2 Red & Green -> Red: %d, Green: %d\n", pinRGB2_Red, pinRGB2_Green);
+    } else if (c == 'y' || c == 'Y') {
+      std::swap(pinRGB2_Green, pinRGB2_Blue);
+      Serial.printf("[SERIAL CALIBRATION] Swapped Strip 2 Green & Blue -> Green: %d, Blue: %d\n", pinRGB2_Green, pinRGB2_Blue);
+    } else if (c == 't' || c == 'T') {
+      currentEffect = FX_NONE;
+      Serial.println("==================================================");
+      Serial.println("[DIAGNOSTIC] Walking Strip 2 Channels (Watch LED 2):");
+      Serial.printf(" 1/3: Lighting Strip 2 RED (GPIO %d) for 2.5s...\n", pinRGB2_Red);
+      setBothRGBColors(0, 0, 0);
+      setRGB2ColorRaw(255, 0, 0);
+      delay(2500);
+      Serial.printf(" 2/3: Lighting Strip 2 GREEN (GPIO %d) for 2.5s...\n", pinRGB2_Green);
+      setBothRGBColors(0, 0, 0);
+      setRGB2ColorRaw(0, 255, 0);
+      delay(2500);
+      Serial.printf(" 3/3: Lighting Strip 2 BLUE (GPIO %d) for 2.5s...\n", pinRGB2_Blue);
+      setBothRGBColors(0, 0, 0);
+      setRGB2ColorRaw(0, 0, 255);
+      delay(2500);
+      Serial.println("[DIAGNOSTIC] Done walking test. Turning OFF.");
+      setBothRGBColors(0, 0, 0);
+      Serial.println("==================================================");
+    } else if (c == '+' || c == '=') {
+      updateBrightness(+1);
+    } else if (c == '-' || c == '_') {
+      updateBrightness(-1);
+    } else if (c == 'f' || c == 'F') {
+      currentEffect = FX_FLASH;
+      effectStep = 0;
+      Serial.println("[SERIAL] Effect: FLASH");
+    } else if (c == 's' || c == 'S') {
+      currentEffect = FX_STROBE;
+      effectStep = 0;
+      Serial.println("[SERIAL] Effect: STROBE");
+    } else if (c == 'd' || c == 'D') {
+      currentEffect = FX_FADE;
+      effectStep = 0;
+      Serial.println("[SERIAL] Effect: FADE");
+    } else if (c == 'm' || c == 'M') {
+      currentEffect = FX_SMOOTH;
+      effectStep = 0;
+      Serial.println("[SERIAL] Effect: SMOOTH");
     }
   }
 }

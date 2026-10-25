@@ -29,15 +29,19 @@ const uint8_t  PIN_DHT      = 27;  // DHT11 Data pin (with 10k pull-up if bare s
 // Set to true for Common Anode (longest pin to 3.3V/5V), false for Common Cathode (longest pin to GND)
 #define RGB_COMMON_ANODE true
 
-// RGB Strip 1: Calibrated based on physical test
-const uint8_t PIN_RGB1_RED   = 22;  // Red pin
-const uint8_t PIN_RGB1_GREEN = 21;  // Green pin
-const uint8_t PIN_RGB1_BLUE  = 23;  // Blue pin
+// Enable external IR transmitter LED (GPIO 4) to blast commands to external commercial light bulbs.
+// Keep FALSE when using direct breadboard RGB LEDs to prevent optical self-interference with VS1838B!
+#define ENABLE_EXTERNAL_IR_TRANSMIT false
 
-// RGB Strip 2: Calibrated matching Strip 1
-const uint8_t PIN_RGB2_RED   = 17;  // Red pin
-const uint8_t PIN_RGB2_GREEN = 16;  // Green pin
-const uint8_t PIN_RGB2_BLUE  = 19;  // Blue pin
+// RGB Strip 1: User's physical breadboard wiring (Red & Green swapped)
+const uint8_t PIN_RGB1_RED   = 22;  // Red pin
+const uint8_t PIN_RGB1_GREEN = 23;  // Green pin
+const uint8_t PIN_RGB1_BLUE  = 21;  // Blue pin
+
+// RGB Strip 2: Pins matching ESP32 DevKit V1 silk-screen
+const uint8_t PIN_RGB2_RED   = 19;  // Red pin (D19)
+const uint8_t PIN_RGB2_GREEN = 17;  // Green pin (TX2 / GPIO 17)
+const uint8_t PIN_RGB2_BLUE  = 16;  // Blue pin (RX2 / GPIO 16)
 
 // ==========================================
 // Complete 24-Key RGB IR Remote Codes (NEC 32-bit)
