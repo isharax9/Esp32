@@ -14,3 +14,9 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Graphify
+graphify-out/
+.graphifyrc
+.graphify*
+
