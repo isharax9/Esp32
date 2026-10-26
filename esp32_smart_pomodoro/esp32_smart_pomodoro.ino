@@ -7,6 +7,7 @@
 #include <IRrecv.h>
 #include <IRutils.h>
 #include <DHT.h>
+#include <Preferences.h>
 
 #include "config.h"
 #include "index_html.h"
@@ -86,6 +87,7 @@ IRrecv irrecv(PIN_IR_RECV);
 decode_results irResults;
 DHT dht(PIN_DHT, DHTTYPE);
 WebServer server(80);
+Preferences wifiPrefs;
 
 // Live Telemetry for Physical Remote Sniffing
 uint32_t lastReceivedIrHex = 0;
@@ -728,6 +730,7 @@ void handleApiCalibrate() {
 }
 
 void handleApiPomodoro() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   if (server.hasArg("action")) {
     String action = server.arg("action");
     if (action == "start") {
@@ -748,6 +751,7 @@ void handleApiPomodoro() {
 }
 
 void handleApiSettings() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   if (server.hasArg("autopause")) {
     autoPauseEnabled = (server.arg("autopause") == "1" || server.arg("autopause") == "true");
     Serial.printf("[SETTINGS] Auto-pause set to: %s\n", autoPauseEnabled ? "ENABLED" : "DISABLED");
@@ -755,6 +759,48 @@ void handleApiSettings() {
     return;
   }
   server.send(400, "application/json", "{\"error\":\"invalid setting\"}");
+}
+
+void handleApiWifi() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  // 1. Scan nearby 2.4 GHz networks
+  if (server.hasArg("scan")) {
+    int n = WiFi.scanNetworks();
+    String json = "{\"status\":\"ok\",\"networks\":[";
+    for (int i = 0; i < n; ++i) {
+      if (i > 0) json += ",";
+      json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + ",\"open\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "true" : "false") + "}";
+    }
+    json += "]}";
+    server.send(200, "application/json", json);
+    return;
+  }
+
+  // 2. Save new Wi-Fi credentials to non-volatile flash and restart
+  if (server.hasArg("ssid")) {
+    String newSsid = server.arg("ssid");
+    String newPass = server.hasArg("pass") ? server.arg("pass") : "";
+
+    wifiPrefs.putString("ssid", newSsid);
+    wifiPrefs.putString("pass", newPass);
+
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Credentials saved. Reconnecting to " + newSsid + "...\"}");
+    delay(500);
+    ESP.restart();
+    return;
+  }
+
+  // 3. Current Wi-Fi status
+  bool connected = (WiFi.status() == WL_CONNECTED);
+  String json = "{";
+  json += "\"connected\":" + String(connected ? "true" : "false") + ",";
+  json += "\"ssid\":\"" + (connected ? WiFi.SSID() : "Desk-Pomodoro (AP)") + "\",";
+  json += "\"ip\":\"" + (connected ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + "\",";
+  json += "\"rssi\":" + String(connected ? WiFi.RSSI() : 0) + ",";
+  json += "\"mdns\":\"http://" + String(MDNS_HOSTNAME) + ".local\"";
+  json += "}";
+  server.send(200, "application/json", json);
 }
 
 // ==========================================
@@ -908,11 +954,18 @@ void setup() {
   // Initialize DHT Sensor
   dht.begin();
 
-  // Wi-Fi Connection
-  if (String(WIFI_SSID) != "YOUR_WIFI_SSID" && strlen(WIFI_SSID) > 0) {
-    Serial.printf("[WIFI] Connecting to %s", WIFI_SSID);
+  // Wi-Fi Connection & Persistent Preferences
+  wifiPrefs.begin("pomo-wifi", false);
+  String activeSsid = wifiPrefs.getString("ssid", WIFI_SSID);
+  String activePass = wifiPrefs.getString("pass", WIFI_PASSWORD);
+
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
+  if (activeSsid != "YOUR_WIFI_SSID" && activeSsid.length() > 0) {
+    Serial.printf("[WIFI] Connecting to %s", activeSsid.c_str());
     WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.begin(activeSsid.c_str(), activePass.c_str());
 
     uint8_t wifiRetries = 0;
     while (WiFi.status() != WL_CONNECTED && wifiRetries < 30) {
@@ -924,7 +977,7 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n[WIFI] Connected Successfully!");
-    Serial.print("[WIFI] IP Address: http://");
+    Serial.print("[WIFI] Local IP Address: http://");
     Serial.println(WiFi.localIP());
 
 #if ENABLE_MDNS
@@ -948,6 +1001,7 @@ void setup() {
   server.on("/api/pomodoro", HTTP_ANY, handleApiPomodoro);
   server.on("/api/settings", HTTP_ANY, handleApiSettings);
   server.on("/api/calibrate", HTTP_ANY, handleApiCalibrate);
+  server.on("/api/wifi", HTTP_ANY, handleApiWifi);
 
   server.begin();
   Serial.println("[HTTP] Web dashboard ready on port 80");

@@ -4,9 +4,9 @@
 // ==========================================
 // Wi-Fi Configuration
 // ==========================================
-// Replace with your local Wi-Fi credentials
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// Local Wi-Fi network credentials (2.4 GHz only)
+const char* WIFI_SSID     = "MacNa-WiFi-2.4G";
+const char* WIFI_PASSWORD = "IshLak@5377..?";
 
 // Optional: Fallback mDNS hostname (e.g., http://pomodoro.local)
 #define ENABLE_MDNS true

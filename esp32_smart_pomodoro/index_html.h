@@ -1057,6 +1057,44 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           • <b>Trig:</b> ESP32 pin <b>D5</b><br>
           • <b>Echo:</b> ESP32 pin <b>D18</b> (via 1k/2k voltage divider)
         </div>
+
+        <!-- Wi-Fi & Network Configuration Card -->
+        <div class="pin-box" style="margin-top:14px;">
+          <div class="pin-title">
+            <span>Wi-Fi Network Configuration</span>
+            <span id="wifi-badge" style="color:var(--green); font-size:0.72rem; font-weight:700;">● Online</span>
+          </div>
+          <p style="font-size:0.72rem; color:var(--text-dim); margin-bottom:10px; line-height:1.4;">
+            Connect your ESP32 to any 2.4 GHz local Wi-Fi router. Access the dashboard from any device via <b>http://pomodoro.local</b> or its local IP.
+          </p>
+
+          <div style="background:rgba(7, 10, 18, 0.7); padding:10px 12px; border-radius:12px; border:1px solid var(--card-border); margin-bottom:12px; font-size:0.74rem;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span style="color:var(--text-sub);">Active Network:</span>
+              <strong id="wifi-current-ssid" style="color:var(--cyan);">-</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span style="color:var(--text-sub);">Local IP:</span>
+              <strong id="wifi-current-ip" style="color:var(--text);">-</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+              <span style="color:var(--text-sub);">mDNS Host:</span>
+              <a href="http://pomodoro.local" target="_blank" style="color:var(--blue); text-decoration:none; font-weight:700;">http://pomodoro.local</a>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <input type="text" id="wifi-ssid-input" placeholder="SSID (e.g. MacNa-WiFi-2.4G)" style="flex:1; background:rgba(255,255,255,0.06); border:1px solid var(--card-border); color:var(--text); border-radius:8px; padding:8px 12px; font-size:0.8rem; outline:none;">
+            <button class="cal-btn" onclick="scanWifiNetworks()" style="width:auto; padding:8px 12px; white-space:nowrap;">🔍 Scan</button>
+          </div>
+          <div id="wifi-scan-results" style="display:none; margin-bottom:8px;">
+            <select id="wifi-scan-select" onchange="selectScannedWifi(this.value)" style="width:100%; background:#131929; border:1px solid var(--card-border); color:var(--text); border-radius:8px; padding:8px 12px; font-size:0.8rem; outline:none;"></select>
+          </div>
+          <div style="margin-bottom:10px;">
+            <input type="password" id="wifi-pass-input" placeholder="Wi-Fi Password" style="width:100%; background:rgba(255,255,255,0.06); border:1px solid var(--card-border); color:var(--text); border-radius:8px; padding:8px 12px; font-size:0.8rem; outline:none;">
+          </div>
+          <button class="btn btn-green" style="width:100%;" onclick="saveWifiCredentials()">Save & Connect to Wi-Fi</button>
+        </div>
       </div>
     </div>
 
@@ -1512,8 +1550,87 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
+    // ==========================================
+    // Wi-Fi Management Handlers
+    // ==========================================
+    async function loadWifiInfo() {
+      try {
+        const res = await fetch('/api/wifi');
+        const d = await res.json();
+        const ssidEl = document.getElementById('wifi-current-ssid');
+        const ipEl = document.getElementById('wifi-current-ip');
+        const badge = document.getElementById('wifi-badge');
+        if (ssidEl) ssidEl.innerText = d.ssid || '-';
+        if (ipEl) ipEl.innerText = d.ip || '-';
+        if (badge) {
+          if (d.connected) {
+            badge.innerText = '● Connected';
+            badge.style.color = 'var(--green)';
+          } else {
+            badge.innerText = '● Hotspot AP';
+            badge.style.color = 'var(--amber)';
+          }
+        }
+      } catch (e) {}
+    }
+
+    async function scanWifiNetworks() {
+      showToast('Scanning 2.4 GHz Wi-Fi...');
+      try {
+        const res = await fetch('/api/wifi?scan=1');
+        const d = await res.json();
+        const sel = document.getElementById('wifi-scan-select');
+        sel.innerHTML = '<option value="">-- Discovered Networks --</option>';
+        if (d.networks && d.networks.length > 0) {
+          d.networks.forEach(n => {
+            if (n.ssid && n.ssid.length > 0) {
+              const opt = document.createElement('option');
+              opt.value = n.ssid;
+              opt.text = `${n.ssid} (${n.rssi} dBm)${n.open ? ' [Open]' : ''}`;
+              sel.appendChild(opt);
+            }
+          });
+          document.getElementById('wifi-scan-results').style.display = 'block';
+          showToast(`Found ${d.networks.length} networks`);
+        } else {
+          showToast('No networks found. Try again.');
+        }
+      } catch (e) {
+        showToast('Scan failed');
+      }
+    }
+
+    function selectScannedWifi(ssid) {
+      if (ssid) {
+        document.getElementById('wifi-ssid-input').value = ssid;
+      }
+    }
+
+    async function saveWifiCredentials() {
+      const ssid = document.getElementById('wifi-ssid-input').value.trim();
+      const pass = document.getElementById('wifi-pass-input').value.trim();
+      if (!ssid) {
+        alert('Please enter or select a Wi-Fi SSID');
+        return;
+      }
+      if (!confirm(`Save Wi-Fi credentials and connect to "${ssid}"?\n\nThe ESP32 will reboot and connect to this network.`)) {
+        return;
+      }
+      showToast('Saving & Rebooting ESP32...');
+      try {
+        await fetch(`/api/wifi?ssid=${encodeURIComponent(ssid)}&pass=${encodeURIComponent(pass)}`, { method: 'POST' });
+        setTimeout(() => {
+          alert(`ESP32 is reconnecting to "${ssid}"!\n\nOnce connected, navigate to:\nhttp://pomodoro.local\n\nor check your router DHCP client list for the new IP.`);
+        }, 1200);
+      } catch (e) {
+        showToast('Rebooting...');
+      }
+    }
+
     setInterval(updateStatus, 1000);
+    setInterval(loadWifiInfo, 10000);
     updateStatus();
+    loadWifiInfo();
   </script>
 </body>
 </html>
