@@ -533,6 +533,24 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       margin-top: 10px;
       line-height: 1.45;
     }
+    .strobe-box input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.15);
+      outline: none;
+      cursor: pointer;
+    }
+    .strobe-box input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+    }
 
     /* Brightness Slider */
     .slider-wrap {
@@ -934,6 +952,71 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           </div>
           <div class="strobe-tip">✨ <b>Smooth Color Control:</b> Tap any static color chip above to strobe that exact color!</div>
         </div>
+
+        <!-- Fade Rainbow Spectrum & Speed Controls -->
+        <div id="fade-panel" class="strobe-box" style="display:none; border-color:rgba(168,85,247,0.4);">
+          <div class="strobe-box-title" style="color:#c084fc;">
+            <span>🌈 Rainbow Fade Spectrum & Speed</span>
+            <span id="fade-mode-badge" style="font-size:0.68rem; padding:3px 8px; border-radius:999px; background:rgba(168,85,247,0.2); color:#c084fc; font-weight:800;">FADE ACTIVE</span>
+          </div>
+          <div class="strobe-pills">
+            <button id="fade-pal-0" class="strobe-pill active" onclick="setFadePalette(0)">🌈 Full Rainbow</button>
+            <button id="fade-pal-1" class="strobe-pill" onclick="setFadePalette(1)">🎨 Pastel Spectrum</button>
+            <button id="fade-pal-2" class="strobe-pill" onclick="setFadePalette(2)">🌅 Sunset Warmth</button>
+            <button id="fade-pal-3" class="strobe-pill" onclick="setFadePalette(3)">🌊 Ocean Breeze</button>
+          </div>
+          <div style="margin-top:14px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim); margin-bottom:6px;">
+              <span>Circulation Speed:</span>
+              <span id="fade-speed-txt" style="color:#c084fc; font-weight:700;">60s</span>
+            </div>
+            <input type="range" id="fade-speed-slider" min="10" max="180" step="5" value="60" oninput="onFadeSpeedInput(this.value)" onchange="onFadeSpeedChange(this.value)" style="width:100%; accent-color:#c084fc;">
+            <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-dim); margin-top:4px;">
+              <span>10s (Fast)</span>
+              <span>60s (Calm)</span>
+              <span>180s (Ultra Slow)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Smooth Rainbow Breath & Respiration Controls -->
+        <div id="smooth-panel" class="strobe-box" style="display:none; border-color:rgba(6,182,212,0.4);">
+          <div class="strobe-box-title" style="color:#67e8f9;">
+            <span>🌊 Ambient Smooth Breath & Rainbow Flow</span>
+            <span id="smooth-mode-badge" style="font-size:0.68rem; padding:3px 8px; border-radius:999px; background:rgba(6,182,212,0.2); color:#67e8f9; font-weight:800;">SMOOTH ACTIVE</span>
+          </div>
+          <div class="strobe-pills" style="grid-template-columns: repeat(2, 1fr);">
+            <button id="smooth-pal-0" class="strobe-pill active" onclick="setSmoothPalette(0)">🌈 Rainbow Breath</button>
+            <button id="smooth-pal-1" class="strobe-pill" onclick="setSmoothPalette(1)">🎨 Pastel Breath</button>
+            <button id="smooth-pal-2" class="strobe-pill" onclick="setSmoothPalette(2)">🌅 Sunset Breath</button>
+            <button id="smooth-pal-3" class="strobe-pill" onclick="setSmoothPalette(3)">🌊 Ocean Breath</button>
+            <button id="smooth-pal-4" class="strobe-pill" style="grid-column: span 2;" onclick="setSmoothPalette(4)">🎯 Selected Color Breath</button>
+          </div>
+          <div style="margin-top:14px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim); margin-bottom:6px;">
+              <span>Rainbow Circulation Speed:</span>
+              <span id="smooth-speed-txt" style="color:#67e8f9; font-weight:700;">75s</span>
+            </div>
+            <input type="range" id="smooth-speed-slider" min="15" max="240" step="5" value="75" oninput="onSmoothSpeedInput(this.value)" onchange="onSmoothSpeedChange(this.value)" style="width:100%; accent-color:#06b6d4;">
+            <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-dim); margin-top:4px;">
+              <span>15s (Vibrant)</span>
+              <span>75s (Calm Flow)</span>
+              <span>240s (Deep Ambient)</span>
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim); margin-bottom:6px;">
+              <span>Breathing Respiration Rate:</span>
+              <span id="smooth-breath-txt" style="color:#67e8f9; font-weight:700;">7.0s</span>
+            </div>
+            <input type="range" id="smooth-breath-slider" min="3" max="12" step="1" value="7" oninput="onSmoothBreathInput(this.value)" onchange="onSmoothBreathChange(this.value)" style="width:100%; accent-color:#06b6d4;">
+            <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-dim); margin-top:4px;">
+              <span>3s (Brisk)</span>
+              <span>7s (Calm Respiration)</span>
+              <span>12s (Meditative)</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1310,6 +1393,65 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       } catch (e) {}
     }
 
+    async function setFadePalette(pal) {
+      hapticTap();
+      try {
+        await fetch(`/api/cmd?val=fade_config&palette=${pal}&strip=${targetStrip}`, { method: 'POST' });
+        const names = ["Full Rainbow", "Pastel Spectrum", "Sunset Warmth", "Ocean Breeze"];
+        showToast(`Fade: ${names[pal] || 'Rainbow'} 🌈`);
+        updateStatus();
+      } catch (e) {}
+    }
+
+    function onFadeSpeedInput(val) {
+      document.getElementById('fade-speed-txt').innerText = `${val}s`;
+    }
+
+    async function onFadeSpeedChange(val) {
+      hapticTap();
+      try {
+        await fetch(`/api/cmd?val=fade_config&speed=${val}&strip=${targetStrip}`, { method: 'POST' });
+        showToast(`Fade Speed: ${val}s 🌈`);
+        updateStatus();
+      } catch (e) {}
+    }
+
+    async function setSmoothPalette(pal) {
+      hapticTap();
+      try {
+        await fetch(`/api/cmd?val=smooth_config&palette=${pal}&strip=${targetStrip}`, { method: 'POST' });
+        const names = ["Rainbow Breath", "Pastel Breath", "Sunset Breath", "Ocean Breath", "Color Breath"];
+        showToast(`Smooth: ${names[pal] || 'Rainbow'} 🌊`);
+        updateStatus();
+      } catch (e) {}
+    }
+
+    function onSmoothSpeedInput(val) {
+      document.getElementById('smooth-speed-txt').innerText = `${val}s`;
+    }
+
+    async function onSmoothSpeedChange(val) {
+      hapticTap();
+      try {
+        await fetch(`/api/cmd?val=smooth_config&speed=${val}&strip=${targetStrip}`, { method: 'POST' });
+        showToast(`Rainbow Speed: ${val}s 🌊`);
+        updateStatus();
+      } catch (e) {}
+    }
+
+    function onSmoothBreathInput(val) {
+      document.getElementById('smooth-breath-txt').innerText = `${val}.0s`;
+    }
+
+    async function onSmoothBreathChange(val) {
+      hapticTap();
+      try {
+        await fetch(`/api/cmd?val=smooth_config&breath=${val}&strip=${targetStrip}`, { method: 'POST' });
+        showToast(`Respiration: ${val}s 🌊`);
+        updateStatus();
+      } catch (e) {}
+    }
+
     function onBrightnessInput(val) {
       const pct = Math.round((val / 255) * 100);
       document.getElementById('bright-txt').innerText = `${pct}%`;
@@ -1519,6 +1661,56 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           }
         } else {
           if (strobePanel) strobePanel.style.display = "none";
+        }
+
+        // Fade Panel Visibility & Active Controls
+        const fadePanel = document.getElementById("fade-panel");
+        if (d.effect === 3) {
+          if (fadePanel) fadePanel.style.display = "block";
+          const fPal = (d.fadePalette !== undefined) ? d.fadePalette : 0;
+          for (let i = 0; i < 4; i++) {
+            const btn = document.getElementById(`fade-pal-${i}`);
+            if (btn) {
+              if (fPal === i) btn.classList.add("active");
+              else btn.classList.remove("active");
+            }
+          }
+          if (d.fadeSpeed !== undefined) {
+            const fSlider = document.getElementById("fade-speed-slider");
+            const fTxt = document.getElementById("fade-speed-txt");
+            if (fSlider && document.activeElement !== fSlider) fSlider.value = d.fadeSpeed;
+            if (fTxt) fTxt.innerText = `${d.fadeSpeed}s`;
+          }
+        } else {
+          if (fadePanel) fadePanel.style.display = "none";
+        }
+
+        // Smooth Panel Visibility & Active Controls
+        const smoothPanel = document.getElementById("smooth-panel");
+        if (d.effect === 4) {
+          if (smoothPanel) smoothPanel.style.display = "block";
+          const sPal = (d.smoothPalette !== undefined) ? d.smoothPalette : 0;
+          for (let i = 0; i < 5; i++) {
+            const btn = document.getElementById(`smooth-pal-${i}`);
+            if (btn) {
+              if (sPal === i) btn.classList.add("active");
+              else btn.classList.remove("active");
+            }
+          }
+          if (d.smoothSpeed !== undefined) {
+            const sSlider = document.getElementById("smooth-speed-slider");
+            const sTxt = document.getElementById("smooth-speed-txt");
+            if (sSlider && document.activeElement !== sSlider) sSlider.value = d.smoothSpeed;
+            if (sTxt) sTxt.innerText = `${d.smoothSpeed}s`;
+          }
+          if (d.smoothBreath !== undefined) {
+            const bSlider = document.getElementById("smooth-breath-slider");
+            const bTxt = document.getElementById("smooth-breath-txt");
+            if (bSlider && document.activeElement !== bSlider) bSlider.value = d.smoothBreath;
+            if (bTxt) bTxt.innerText = `${d.smoothBreath}.0s`;
+          }
+        } else {
+          if (smoothPanel) smoothPanel.style.display = "none";
         }
 
         // Dynamic Pin Status

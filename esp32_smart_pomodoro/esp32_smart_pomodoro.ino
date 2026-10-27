@@ -77,9 +77,17 @@ bool inTransition = false;
 // Effect Animation Steppers
 float fadeHue = 0.0f;
 float smoothAngle = 0.0f;
+float smoothHue = 0.0f;
 uint8_t flashColorIndex = 0;
 unsigned long flashStepStartMs = 0;
 uint8_t strobeColorIndex = 0;
+
+// Advanced Effect Configuration State
+uint16_t fadeSpeedSec    = 60;  // 10s to 180s (seconds per 360-deg rainbow cycle)
+uint8_t  fadePalette     = 0;   // 0: Rainbow, 1: Pastel Rainbow, 2: Sunset, 3: Ocean
+uint16_t smoothSpeedSec  = 75;  // 15s to 240s (seconds per 360-deg rainbow cycle)
+uint8_t  smoothBreathSec = 7;   // 3s to 12s (seconds per breath cycle)
+uint8_t  smoothPalette   = 0;   // 0: Rainbow Breath, 1: Pastel Breath, 2: Sunset, 3: Ocean, 4: Selected Color
 
 // Hardware Peripherals
 IRsend irsend(PIN_IR_LED);
@@ -255,25 +263,85 @@ void updateBrightness(int8_t step) {
   }
 }
 
-// Convert HSV (h: 0-359, s: 0-255, v: 0-255) to RGB (0-255)
-void hsvToRgb(uint16_t h, uint8_t s, uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b) {
+// High-precision floating point HSV (h: 0.0-360.0f, s: 0-255, v: 0-255) to RGB (0-255)
+void hsvToRgbFloat(float h, uint8_t s, uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b) {
   if (s == 0) {
     r = g = b = v;
     return;
   }
-  uint8_t region = (h % 360) / 60;
-  uint16_t remainder = ((h % 360) - (region * 60)) * 6;
-  uint8_t p = (v * (255 - s)) >> 8;
-  uint8_t q = (v * (255 - ((s * remainder) >> 8))) >> 8;
-  uint8_t t = (v * (255 - ((s * (1530 - remainder)) >> 8))) >> 8;
+  while (h >= 360.0f) h -= 360.0f;
+  while (h < 0.0f) h += 360.0f;
+
+  float h_sec = h / 60.0f;
+  int region = (int)h_sec;
+  float rem = h_sec - region; // 0.0 to 1.0
+
+  float sat = s / 255.0f;
+  float val = (float)v;
+
+  float p = val * (1.0f - sat);
+  float q = val * (1.0f - (sat * rem));
+  float t = val * (1.0f - (sat * (1.0f - rem)));
 
   switch (region) {
-    case 0: r = v; g = t; b = p; break;
-    case 1: r = q; g = v; b = p; break;
-    case 2: r = p; g = v; b = t; break;
-    case 3: r = p; g = q; b = v; break;
-    case 4: r = t; g = p; b = v; break;
-    default: r = v; g = p; b = q; break;
+    case 0: r = (uint8_t)round(val); g = (uint8_t)round(t);   b = (uint8_t)round(p);   break;
+    case 1: r = (uint8_t)round(q);   g = (uint8_t)round(val); b = (uint8_t)round(p);   break;
+    case 2: r = (uint8_t)round(p);   g = (uint8_t)round(val); b = (uint8_t)round(t);   break;
+    case 3: r = (uint8_t)round(p);   g = (uint8_t)round(q);   b = (uint8_t)round(val); break;
+    case 4: r = (uint8_t)round(t);   g = (uint8_t)round(p);   b = (uint8_t)round(val); break;
+    default: r = (uint8_t)round(val); g = (uint8_t)round(p);  b = (uint8_t)round(q);   break;
+  }
+}
+
+// Convert HSV (h: 0-359, s: 0-255, v: 0-255) to RGB (0-255)
+void hsvToRgb(uint16_t h, uint8_t s, uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b) {
+  hsvToRgbFloat((float)h, s, v, r, g, b);
+}
+
+// Helper: Calculate Hue (0-360 deg) from current RGB
+float rgbToHue(uint8_t r, uint8_t g, uint8_t b) {
+  float rf = r / 255.0f;
+  float gf = g / 255.0f;
+  float bf = b / 255.0f;
+  float maxVal = max(rf, max(gf, bf));
+  float minVal = min(rf, min(gf, bf));
+  float delta = maxVal - minVal;
+  if (delta < 0.001f) return 0.0f;
+
+  float h = 0.0f;
+  if (maxVal == rf) {
+    h = 60.0f * fmod(((gf - bf) / delta), 6.0f);
+  } else if (maxVal == gf) {
+    h = 60.0f * (((bf - rf) / delta) + 2.0f);
+  } else {
+    h = 60.0f * (((rf - gf) / delta) + 4.0f);
+  }
+  if (h < 0.0f) h += 360.0f;
+  return h;
+}
+
+// Helper: Seamlessly activate Fade Effect from active light state
+void activateFadeEffect() {
+  currentEffect = FX_FADE;
+  lastEffectUpdateMs = millis();
+  uint8_t r = (uint8_t)round(curR1);
+  uint8_t g = (uint8_t)round(curG1);
+  uint8_t b = (uint8_t)round(curB1);
+  if (r > 10 || g > 10 || b > 10) {
+    fadeHue = rgbToHue(r, g, b);
+  }
+}
+
+// Helper: Seamlessly activate Smooth Effect with serene respiration start
+void activateSmoothEffect() {
+  currentEffect = FX_SMOOTH;
+  lastEffectUpdateMs = millis();
+  smoothAngle = 1.5707963f; // Start at natural inhale crest (~1.0 peak) so light doesn't abruptly drop
+  uint8_t r = (uint8_t)round(curR1);
+  uint8_t g = (uint8_t)round(curG1);
+  uint8_t b = (uint8_t)round(curB1);
+  if (r > 10 || g > 10 || b > 10) {
+    smoothHue = rgbToHue(r, g, b);
   }
 }
 
@@ -377,14 +445,40 @@ void updateEffects() {
     }
   }
   else if (currentEffect == FX_FADE) {
-    // Ultra-smooth continuous 360-degree rainbow flow at 50 FPS
+    // Continuous 360-degree rainbow flow with configurable speed and palette
     if (now - lastEffectUpdateMs >= 20) {
       lastEffectUpdateMs = now;
-      fadeHue += 0.55f;
+      if (fadeSpeedSec < 10) fadeSpeedSec = 10;
+      if (fadeSpeedSec > 180) fadeSpeedSec = 180;
+      float hueStep = 360.0f / (fadeSpeedSec * 50.0f); // 50 FPS
+      fadeHue += hueStep;
       if (fadeHue >= 360.0f) fadeHue -= 360.0f;
 
       uint8_t r, g, b;
-      hsvToRgb((uint16_t)fadeHue, 255, currentBrightness, r, g, b);
+      float activeHue = fadeHue;
+      uint8_t sat = 255;
+
+      if (fadePalette == 0) {
+        // Full Rainbow (circulates all 360° colors of the spectrum at full saturation)
+        activeHue = fadeHue;
+        sat = 255;
+      } else if (fadePalette == 1) {
+        // Pastel Rainbow (circulates all 360° colors with gentle ambient saturation)
+        activeHue = fadeHue;
+        sat = 175;
+      } else if (fadePalette == 2) {
+        // Sunset Warmth (crimson -> orange -> warm amber -> golden yellow)
+        float t = (sin(fadeHue * 0.0174533f) + 1.0f) * 0.5f;
+        activeHue = fmod(345.0f + t * 75.0f, 360.0f);
+        sat = 245;
+      } else if (fadePalette == 3) {
+        // Ocean Breeze (teal -> cyan -> sky blue -> deep violet)
+        float t = (sin(fadeHue * 0.0174533f) + 1.0f) * 0.5f;
+        activeHue = 160.0f + t * 115.0f;
+        sat = 240;
+      }
+
+      hsvToRgbFloat(activeHue, sat, currentBrightness, r, g, b);
       curR1 = curR2 = r;
       curG1 = curG2 = g;
       curB1 = curB2 = b;
@@ -393,23 +487,63 @@ void updateEffects() {
     }
   }
   else if (currentEffect == FX_SMOOTH) {
-    // Ambient breathing mood flow with smooth sinusoidal intensity curve
+    // Ambient breathing wave with full rainbow color circulation & configurable rhythm
     if (now - lastEffectUpdateMs >= 20) {
       lastEffectUpdateMs = now;
-      smoothAngle += 0.045f;
+
+      // 1. Respiration Cycle (configurable smoothBreathSec, default 7s)
+      if (smoothBreathSec < 3) smoothBreathSec = 3;
+      if (smoothBreathSec > 12) smoothBreathSec = 12;
+      float angleStep = 6.2831853f / (smoothBreathSec * 50.0f);
+      smoothAngle += angleStep;
       if (smoothAngle >= 6.2831853f) smoothAngle -= 6.2831853f;
 
-      float breath = sin(smoothAngle) * 0.425f + 0.575f; // Smooth pulse from 15% to 100%
+      // Organic respiratory curve with perceptual gamma ease
+      float sinVal = sin(smoothAngle);
+      float norm = (sinVal + 1.0f) * 0.5f; // 0.0 to 1.0
+      float eased = norm * norm; // Quadratic ease for natural optical perception
+      float breath = 0.15f + 0.85f * eased; // Gentle min 15% glow to 100%
+
+      // 2. Color Circulation (configurable smoothSpeedSec, default 75s)
+      if (smoothSpeedSec < 15) smoothSpeedSec = 15;
+      if (smoothSpeedSec > 240) smoothSpeedSec = 240;
+      float hueStep = 360.0f / (smoothSpeedSec * 50.0f);
+      smoothHue += hueStep;
+      if (smoothHue >= 360.0f) smoothHue -= 360.0f;
 
       uint8_t r, g, b;
-      if (baseR == 0 && baseG == 0 && baseB == 0) {
-        float hue = fmod(smoothAngle * 35.0f, 360.0f);
-        hsvToRgb((uint16_t)hue, 180, (uint8_t)round(currentBrightness * breath), r, g, b);
-      } else {
+      if (smoothPalette == 4 && (baseR != 0 || baseG != 0 || baseB != 0)) {
+        // Selected Color Breath
         r = (uint8_t)round(baseR * breath * currentBrightness / 255.0f);
         g = (uint8_t)round(baseG * breath * currentBrightness / 255.0f);
         b = (uint8_t)round(baseB * breath * currentBrightness / 255.0f);
+      } else {
+        float activeHue = smoothHue;
+        uint8_t sat = 255; // Rainbow saturation by default!
+
+        if (smoothPalette == 0) {
+          // Rainbow Breath (circulate all colors of the rainbow while breathing)
+          activeHue = smoothHue;
+          sat = 255;
+        } else if (smoothPalette == 1) {
+          // Pastel Rainbow Breath
+          activeHue = smoothHue;
+          sat = 175;
+        } else if (smoothPalette == 2) {
+          // Sunset Breath
+          float t = (sin(smoothHue * 0.0174533f) + 1.0f) * 0.5f;
+          activeHue = fmod(345.0f + t * 75.0f, 360.0f);
+          sat = 245;
+        } else if (smoothPalette == 3) {
+          // Ocean Breath
+          float t = (sin(smoothHue * 0.0174533f) + 1.0f) * 0.5f;
+          activeHue = 160.0f + t * 115.0f;
+          sat = 240;
+        }
+
+        hsvToRgbFloat(activeHue, sat, (uint8_t)round(currentBrightness * breath), r, g, b);
       }
+
       curR1 = curR2 = r;
       curG1 = curG2 = g;
       curB1 = curB2 = b;
@@ -546,7 +680,7 @@ void handleApiStatus() {
   if (currentState == STATE_WORK) stateStr = "WORK";
   else if (currentState == STATE_BREAK) stateStr = "BREAK";
 
-  char jsonBuf[512];
+  char jsonBuf[768];
   snprintf(jsonBuf, sizeof(jsonBuf),
     "{\"state\":\"%s\","
     "\"isPaused\":%s,"
@@ -561,6 +695,11 @@ void handleApiStatus() {
     "\"brightness\":%d,"
     "\"effect\":%d,"
     "\"strobeMode\":%d,"
+    "\"fadeSpeed\":%d,"
+    "\"fadePalette\":%d,"
+    "\"smoothSpeed\":%d,"
+    "\"smoothBreath\":%d,"
+    "\"smoothPalette\":%d,"
     "\"lastIrHex\":\"0x%06lX\","
     "\"lastIrName\":\"%s\","
     "\"s1\":{\"r\":%d,\"g\":%d,\"b\":%d},"
@@ -578,6 +717,11 @@ void handleApiStatus() {
     currentBrightness,
     (int)currentEffect,
     (int)currentStrobeMode,
+    (int)fadeSpeedSec,
+    (int)fadePalette,
+    (int)smoothSpeedSec,
+    (int)smoothBreathSec,
+    (int)smoothPalette,
     (unsigned long)lastReceivedIrHex,
     lastReceivedIrName.c_str(),
     pinRGB1_Red, pinRGB1_Green, pinRGB1_Blue,
@@ -662,8 +806,34 @@ void handleApiCmd() {
       server.send(200, "application/json", "{\"status\":\"ok\"}");
       return;
     }
-    else if (val == "fade")      { currentEffect = FX_FADE; fadeHue = 0.0f; code = IR_FADE; }
-    else if (val == "smooth")    { currentEffect = FX_SMOOTH; smoothAngle = 0.0f; code = IR_SMOOTH; }
+    else if (val == "fade") {
+      if (server.hasArg("speed")) { fadeSpeedSec = server.arg("speed").toInt(); }
+      if (server.hasArg("palette")) { fadePalette = server.arg("palette").toInt(); }
+      activateFadeEffect();
+      code = IR_FADE;
+    }
+    else if (val == "fade_config") {
+      currentEffect = FX_FADE;
+      if (server.hasArg("speed")) { fadeSpeedSec = server.arg("speed").toInt(); }
+      if (server.hasArg("palette")) { fadePalette = server.arg("palette").toInt(); }
+      server.send(200, "application/json", "{\"status\":\"ok\"}");
+      return;
+    }
+    else if (val == "smooth") {
+      if (server.hasArg("speed")) { smoothSpeedSec = server.arg("speed").toInt(); }
+      if (server.hasArg("palette")) { smoothPalette = server.arg("palette").toInt(); }
+      if (server.hasArg("breath")) { smoothBreathSec = server.arg("breath").toInt(); }
+      activateSmoothEffect();
+      code = IR_SMOOTH;
+    }
+    else if (val == "smooth_config") {
+      currentEffect = FX_SMOOTH;
+      if (server.hasArg("speed")) { smoothSpeedSec = server.arg("speed").toInt(); }
+      if (server.hasArg("palette")) { smoothPalette = server.arg("palette").toInt(); }
+      if (server.hasArg("breath")) { smoothBreathSec = server.arg("breath").toInt(); }
+      server.send(200, "application/json", "{\"status\":\"ok\"}");
+      return;
+    }
 
     if (code != 0) {
       sendExternalIR(code);
@@ -895,10 +1065,9 @@ void handlePhysicalIRCommand(uint32_t val) {
     case IR_LIGHT_BLUE:   setLightOrStrobe(0, 160, 255, "SKY BLUE"); break;
     case IR_PINK:         setLightOrStrobe(255, 40, 160, "PINK"); break;
     case IR_FADE:
-      currentEffect = FX_FADE;
-      fadeHue = 0.0f;
+      activateFadeEffect();
       lastReceivedIrName = "FADE (Rainbow Flow)";
-      Serial.println("[REMOTE] -> Effect: FADE (Rainbow wave)");
+      Serial.println("[REMOTE] -> Effect: FADE (Calm rainbow wave)");
       break;
 
     // Row 6
@@ -906,10 +1075,9 @@ void handlePhysicalIRCommand(uint32_t val) {
     case IR_SKY_BLUE:     setLightOrStrobe(50, 220, 255, "ICE BLUE"); break;
     case IR_PURPLE:       setLightOrStrobe(150, 0, 255, "PURPLE"); break;
     case IR_SMOOTH:
-      currentEffect = FX_SMOOTH;
-      smoothAngle = 0.0f;
+      activateSmoothEffect();
       lastReceivedIrName = "SMOOTH (Ambient Breath)";
-      Serial.println("[REMOTE] -> Effect: SMOOTH (Ambient breath)");
+      Serial.println("[REMOTE] -> Effect: SMOOTH (Calm ambient breath)");
       break;
 
     default:
@@ -1205,13 +1373,13 @@ void loop() {
       effectStep = 0;
       Serial.println("[SERIAL] Effect: STROBE");
     } else if (c == 'd' || c == 'D') {
-      currentEffect = FX_FADE;
+      activateFadeEffect();
       effectStep = 0;
-      Serial.println("[SERIAL] Effect: FADE");
+      Serial.println("[SERIAL] Effect: FADE (Calm)");
     } else if (c == 'm' || c == 'M') {
-      currentEffect = FX_SMOOTH;
+      activateSmoothEffect();
       effectStep = 0;
-      Serial.println("[SERIAL] Effect: SMOOTH");
+      Serial.println("[SERIAL] Effect: SMOOTH (Calm)");
     }
   }
 }
