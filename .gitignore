@@ -20,3 +20,10 @@ graphify-out/
 .graphifyrc
 .graphify*
 
+# Promo Video Assets & Media (Local only - not for GitHub)
+*.mp4
+*.mov
+*.wav
+promo_video_recordings/
+promo_video_build/
+
